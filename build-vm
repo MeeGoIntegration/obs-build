@@ -75,7 +75,7 @@ EMULATOR_SCRIPT=
 # openstack specific
 VM_OPENSTACK_FLAVOR=
 
-for i in ec2 emulator kvm lxc openstack qemu uml xen zvm docker podman pvm nspawn; do
+for i in ec2 emulator kvm lxc openstack qemu uml xen zvm docker podman pvm nspawn sb2; do
     . "$BUILD_DIR/build-vm-$i"
 done
 
@@ -637,7 +637,8 @@ vm_detect_2nd_stage() {
     fi
     RUNNING_IN_VM=true
     test -e /proc/version || mount -orw -n -tproc none /proc
-    if test -z "$VM_TYPE_CONTAINER" ; then
+    # FIXME: change sb2 to be in vm_type_container 
+    if test -z "$VM_TYPE_CONTAINER" -a "$VM_TYPE" != sb2 ; then
 	mount -n ${VMDISK_MOUNT_OPTIONS},remount,rw /
     fi
     umount /run >/dev/null 2>&1
@@ -1141,8 +1142,12 @@ vm_first_stage() {
     buildroot_umount /mnt
 
     vm_init_script="/.build/build"
-    if set_initvm_name_for_emulator_in "$BUILD_ROOT/.build" ; then
-        vm_init_script="/.build/$INITVM_NAME"
+    if test -n "$BUILD_SB2FLAGS" -a -e "$BUILD_DIR/initscript_sb2" ; then
+            vm_init_script="/.build/initscript_sb2"
+    else
+	if set_initvm_name_for_emulator_in "$BUILD_ROOT/.build" ; then
+	    vm_init_script="/.build/$INITVM_NAME"
+        fi
     fi
 
     if test -n "$VM_ROOT" ; then

@@ -52,11 +52,13 @@ install:
 	    getbinaryid \
 	    getbuildids \
 	    killchroot \
+	    getsb2flags \
 	    queryconfig \
 	    queryrecipe \
 	    queryrepo \
 	    common_functions \
 	    init_buildsystem \
+	    initscript_sb2 \
 	    substitutedeps \
 	    debtransform \
 	    debtransformarchive \

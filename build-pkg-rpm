@@ -24,20 +24,20 @@
 
 pkg_initdb_rpm() {
     echo "initializing rpm db..."
-    mkdir -p $BUILD_ROOT/var/lib/rpm
+    mkdir -p $BUILD_TARGET/var/lib/rpm
     # rpm v5 does not have initdb
-    if ! test -e $BUILD_ROOT/usr/lib/rpm/cpuinfo.yaml ; then
-	if test -x $BUILD_ROOT/usr/bin/rpmdb ; then
-	    chroot $BUILD_ROOT /usr/bin/rpmdb --initdb || cleanup_and_exit 1
+    if ! test -e $BUILD_TARGET/usr/lib/rpm/cpuinfo.yaml ; then
+	if test -x $BUILD_TARGET/usr/bin/rpmdb ; then
+	    enter_target needroot /usr/bin/rpmdb --initdb || cleanup_and_exit 1
 	else
-	    chroot $BUILD_ROOT rpm --initdb || cleanup_and_exit 1
+	    enter_target needroot rpm --initdb || cleanup_and_exit 1
 	fi
     fi
     # hack: add nofsync to db config to speed up install
-    mkdir -p $BUILD_ROOT/root
-    DBI_OTHER=`chroot $BUILD_ROOT rpm --eval '%{?__dbi_other}'`
-    echo "%__dbi_other $DBI_OTHER nofsync" > $BUILD_ROOT/.rpmmacros
-    echo "%__dbi_other $DBI_OTHER nofsync" > $BUILD_ROOT/root/.rpmmacros
+    mkdir -p $BUILD_TARGET/root
+    DBI_OTHER=`enter_target needroot rpm --eval '%{?__dbi_other}'`
+    echo "%__dbi_other $DBI_OTHER nofsync" > $BUILD_TARGET/.rpmmacros
+    echo "%__dbi_other $DBI_OTHER nofsync" > $BUILD_TARGET/root/.rpmmacros
 }
 
 pkg_prepare_rpm() {
@@ -46,7 +46,7 @@ pkg_prepare_rpm() {
 }
 
 pkg_erase_rpm() {
-    chroot $BUILD_ROOT rpm --nodeps -e $PKG 2>&1 | {
+    enter_target needroot rpm --nodeps -e $PKG 2>&1 | {
 	local retry
 	while read line; do
 	    case "$line" in
@@ -61,7 +61,7 @@ pkg_erase_rpm() {
 	done
 	if test -n "$retry" ; then
 	    echo "re-try deleting $PKG using --noscripts"
-	    chroot $BUILD_ROOT rpm --nodeps --noscripts -e $PKG || true
+	    enter_target needroot rpm --nodeps --noscripts -e $PKG || true
 	fi
     }
 }
@@ -92,7 +92,7 @@ rpm_init_cumulate() {
 }
 
 pkg_verify_installed_rpm() {
-    chroot $BUILD_ROOT rpm --verify $PKG 2>&1 | tee $TMPFILE
+    enter_target needroot rpm --verify $PKG 2>&1 | tee $TMPFILE
     if grep ^missing $TMPFILE > /dev/null ; then
 	return 1
     fi
@@ -103,7 +103,7 @@ pkg_cumulate_rpm() {
     test "$DO_CUMULATE" = true || return 1
     # work around for cross-build installs, we must not overwrite the running rpm
     if test "$PKG" = rpm ; then
-	for i in $BUILD_ROOT/.init_b_cache/preinstalls/rpm-x86-* ; do
+	for i in $BUILD_TARGET/.init_b_cache/preinstalls/rpm-x86-* ; do
 	    test -e "$i" && return 1
 	done
     fi
@@ -121,11 +121,11 @@ pkg_install_rpm() {
     fi
     # work around for cross-build installs, we must not overwrite the running rpm
     if test "$PKG" = rpm ; then
-	for i in $BUILD_ROOT/.init_b_cache/preinstalls/rpm-x86-* ; do
+	for i in $BUILD_TARGET/.init_b_cache/preinstalls/rpm-x86-* ; do
 	    test -e "$i" && ADDITIONAL_PARAMS="$ADDITIONAL_PARAMS --justdb"
 	done
     fi
-    ( cd $BUILD_ROOT && chroot $BUILD_ROOT rpm --ignorearch --nodeps -U --oldpackage --ignoresize $RPMCHECKOPTS \
+    ( cd $BUILD_TARGET && enter_target needroot rpm --ignorearch --nodeps -U --oldpackage --ignoresize $RPMCHECKOPTS \
 		$ADDITIONAL_PARAMS .init_b_cache/$PKG.rpm 2>&1 || \
 	  touch $BUILD_ROOT/exit ) | \
 	      grep -v "^warning:.*saved as.*rpmorig$"
@@ -134,31 +134,31 @@ pkg_install_rpm() {
 pkg_sysrootinstall_rpm() {
     local TEMP_BUILD_SYSROOT="${BUILD_SYSROOT}.hostsystem.temp"
     if test "x$1" = "x--prepare" ; then
-        if test -d "$BUILD_ROOT$BUILD_SYSROOT" -a ! -d "$BUILD_ROOT$TEMP_BUILD_SYSROOT"; then
+        if test -d "$BUILD_TARGET$BUILD_SYSROOT" -a ! -d "$BUILD_TARGET$TEMP_BUILD_SYSROOT"; then
             # The host system may already provide files for the sysroot target
             # rpm is not able to handle directory to symlink conversation, so
             # we need to move it away first and copy it back later.
-            mv "$BUILD_ROOT$BUILD_SYSROOT" "$BUILD_ROOT$TEMP_BUILD_SYSROOT"
+            mv "$BUILD_TARGET$BUILD_SYSROOT" "$BUILD_TARGET$TEMP_BUILD_SYSROOT"
         fi
 	assert_dir_path "$BUILD_SYSROOT"
-	chroot $BUILD_ROOT mkdir -p "$BUILD_SYSROOT"
-	chroot $BUILD_ROOT rpm  --root "$BUILD_SYSROOT" --initdb
-	local installed=$(chroot $BUILD_ROOT rpm  --root "$BUILD_SYSROOT" -qa)
-	test -n "$installed" && chroot $BUILD_ROOT rpm  --root "$BUILD_SYSROOT" --nodeps --noscripts -e --allmatches $installed
+	enter_target $BUILD_TARGET mkdir -p "$BUILD_SYSROOT"
+	enter_target $BUILD_TARGET rpm  --root "$BUILD_SYSROOT" --initdb
+	local installed=$(enter_target $BUILD_TARGET rpm  --root "$BUILD_SYSROOT" -qa)
+	test -n "$installed" && enter_target $BUILD_TARGET rpm  --root "$BUILD_SYSROOT" --nodeps --noscripts -e --allmatches $installed
 	return
     fi
     if test "x$1" = "x--finalize" ; then
-        if test -d "$BUILD_ROOT$TEMP_BUILD_SYSROOT"; then
+        if test -d "$BUILD_TARGET$TEMP_BUILD_SYSROOT"; then
             # copy back the files provided by the host system
             # a simple "cp -a" is not working as some directories
             # may be symlinks now
-            pushd "$BUILD_ROOT$TEMP_BUILD_SYSROOT"
+            pushd "$BUILD_TARGET$TEMP_BUILD_SYSROOT"
             find . -type f | while read fn; do
-                mkdir -p "$BUILD_ROOT$BUILD_SYSROOT/${fn%/*}"
-                cp -an "$fn" "$BUILD_ROOT$BUILD_SYSROOT/$fn"
+                mkdir -p "$BUILD_TARGET$BUILD_SYSROOT/${fn%/*}"
+                cp -an "$fn" "$BUILD_TARGET$BUILD_SYSROOT/$fn"
             done
             popd
-            rm -rf "$BUILD_ROOT$TEMP_BUILD_SYSROOT"
+            rm -rf "$BUILD_TARGET$TEMP_BUILD_SYSROOT"
         fi
 	return
     fi
@@ -166,9 +166,9 @@ pkg_sysrootinstall_rpm() {
     if test "$USE_FORCE" = true ; then
 	export ADDITIONAL_PARAMS="$ADDITIONAL_PARAMS --force"
     fi
-    ( cd $BUILD_ROOT && chroot $BUILD_ROOT rpm --ignorearch --nodeps -U --oldpackage --ignoresize $RPMCHECKOPTS \
+    ( cd $BUILD_TARGET && enter_target $BUILD_TARGET rpm --ignorearch --nodeps -U --oldpackage --ignoresize $RPMCHECKOPTS \
 		$ADDITIONAL_PARAMS --noscripts --root "$BUILD_SYSROOT" .init_b_cache/$PKG.rpm 2>&1 || \
-	  touch $BUILD_ROOT/exit ) | \
+	  touch $BUILD_TARGET/exit ) | \
 	      grep -v "^warning:.*saved as.*rpmorig$"
 }
 
@@ -178,21 +178,21 @@ pkg_finalize_rpm() {
 	for ((num=0; num<=cumulate; num++)) ; do
 	    echo ${CUMULATED_LIST[$num]}
 	    PKG=${CUMULATED_LIST[$num]##*/}
-	    test "$BUILD_ROOT/.init_b_cache/rpms/$PKG" -ef "$BUILD_ROOT/${CUMULATED_LIST[$num]}" && continue
-	    cp --remove-destination $BUILD_ROOT/.init_b_cache/rpms/$PKG $BUILD_ROOT/${CUMULATED_LIST[$num]} || cleanup_and_exit 1
-	done > $BUILD_ROOT/.init_b_cache/manifest
-	( cd $BUILD_ROOT && chroot $BUILD_ROOT rpm --ignorearch --nodeps -Uh --oldpackage --ignoresize --verbose $RPMCHECKOPTS \
-		$ADDITIONAL_PARAMS .init_b_cache/manifest 2>&1 || touch $BUILD_ROOT/exit )
+	    test "$BUILD_TARGET/.init_b_cache/rpms/$PKG" -ef "$BUILD_TARGET/${CUMULATED_LIST[$num]}" && continue
+	    cp --remove-destination $BUILD_TARGET/.init_b_cache/rpms/$PKG $BUILD_TARGET/${CUMULATED_LIST[$num]} || cleanup_and_exit 1
+	done > $BUILD_TARGET/.init_b_cache/manifest
+	( cd $BUILD_TARGET && enter_target $BUILD_TARGET rpm --ignorearch --nodeps -Uh --oldpackage --ignoresize --verbose $RPMCHECKOPTS \
+		$ADDITIONAL_PARAMS .init_b_cache/manifest 2>&1 || touch $BUILD_TARGET/exit )
 	for ((num=0; num<=cumulate; num++)) ; do
-	    rm -f $BUILD_ROOT/${CUMULATED_LIST[$num]}
+	    rm -f $BUILD_TARGET/${CUMULATED_LIST[$num]}
 	done
-	rm -f $BUILD_ROOT/.init_b_cache/manifest
+	rm -f $BUILD_TARGET/.init_b_cache/manifest
 	check_exit
 	for ((num=0; num<=cumulate; num++)) ; do
 	    PKG=${CUMULATED_LIST[$num]##*/}
-	    echo "${CUMULATED_PIDS[$num]}" > $BUILD_ROOT/installed-pkg/${PKG%.rpm}
+	    echo "${CUMULATED_PIDS[$num]}" > $BUILD_TARGET/installed-pkg/${PKG%.rpm}
 	    test -n "${CUMULATED_HMD5[$num]}" || continue
-	    echo "${CUMULATED_HMD5[$num]} ${CUMULATED_PIDS[$num]}" > $BUILD_ROOT/.preinstall_image/${PKG%.rpm}
+	    echo "${CUMULATED_HMD5[$num]} ${CUMULATED_PIDS[$num]}" > $BUILD_TARGET/.preinstall_image/${PKG%.rpm}
 	done
     fi
 }
@@ -259,25 +259,25 @@ pkg_preinstall_rpm() {
     # hack for rpm erasures
     if test -d "$BUILD_ROOT/installed-pkg" -a -z "$PREPARE_VM" ; then
 	# call for rpm-4.x and not rpm-devel
-        test -z "${PKG##rpm-[0-9]*}" && chroot . rpm --rebuilddb
+        test -z "${PKG##rpm-[0-9]*}" && enter_target . rpm --rebuilddb
         # also exec for exchanged rpm !  naming is rpm-x86-<target>-<ver>
-        test -z "${PKG##rpm-x86-*[0-9]*}" && chroot . rpm --rebuilddb
+        test -z "${PKG##rpm-x86-*[0-9]*}" && enter_target . rpm --rebuilddb
     fi
 }
 
 pkg_runscripts_rpm() {
-    if test -e "$BUILD_ROOT/.init_b_cache/scripts/$PKG.pre" ; then
+    if test -e "$BUILD_TARGET/.init_b_cache/scripts/$PKG.pre" ; then
 	echo "running $PKG preinstall script"
 	local prog
 	read prog < "$BUILD_ROOT/.init_b_cache/scripts/$PKG.preprog"
-	(cd $BUILD_ROOT && chroot $BUILD_ROOT "${prog:-sh}" ".init_b_cache/scripts/$PKG.pre" 0)
+	(cd $BUILD_ROOT && enter_target "${prog:-sh}" ".init_b_cache/scripts/$PKG.pre" 0)
 	rm -f "$BUILD_ROOT/.init_b_cache/scripts/$PKG.pre" "$BUILD_ROOT/.init_b_cache/scripts/$PKG.preprog"
     fi
-    if test -e "$BUILD_ROOT/.init_b_cache/scripts/$PKG.post" ; then
+    if test -e "$BUILD_TARGET/.init_b_cache/scripts/$PKG.post" ; then
 	echo "running $PKG postinstall script"
 	local prog
 	read prog < "$BUILD_ROOT/.init_b_cache/scripts/$PKG.postprog"
-	(cd $BUILD_ROOT && chroot $BUILD_ROOT "${prog:-sh}" ".init_b_cache/scripts/$PKG.post" 1)
+	(cd $BUILD_ROOT && enter_target "${prog:-sh}" ".init_b_cache/scripts/$PKG.post" 1)
 	rm -f "$BUILD_ROOT/.init_b_cache/scripts/$PKG.post" "$BUILD_ROOT/.init_b_cache/scripts/$PKG.postprog"
     fi
 }

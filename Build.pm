@@ -412,6 +412,7 @@ sub read_config {
   delete $config->{'parsing_config'};
   $config->{'preinstall'} = [];
   $config->{'vminstall'} = [];
+  $config->{'sb2install'} = [];
   $config->{'runscripts'} = [];
   $config->{'required'} = [];
   $config->{'support'} = [];
@@ -425,6 +426,7 @@ sub read_config {
   $config->{'substitute'} = {};
   $config->{'substitute_vers'} = {};
   $config->{'optflags'} = {};
+  $config->{'sb2flags'} = {};
   $config->{'order'} = {};
   $config->{'exportfilter'} = {};
   $config->{'publishfilter'} = [];
@@ -459,7 +461,7 @@ sub read_config {
     } elsif ($l0 eq 'distmacro:') {
       @l = split(' ', $l, 2);
       push @macros, "%define $l[1]" if @l == 2;
-    } elsif ($l0 eq 'preinstall:' || $l0 eq 'vminstall:' || $l0 eq 'required:' || $l0 eq 'support:' || $l0 eq 'keep:' || $l0 eq 'prefer:' || $l0 eq 'ignore:' || $l0 eq 'conflict:' || $l0 eq 'runscripts:' || $l0 eq 'expandflags:' || $l0 eq 'buildflags:' || $l0 eq 'publishflags:' || $l0 eq 'repourl:' || $l0 eq 'registryurl:' || $l0 eq 'assetsurl:' || $l0 eq 'onlynative:' || $l0 eq 'alsonative:' || $l0 eq 'ignorerebuild:') {
+    } elsif ($l0 eq 'preinstall:' || $l0 eq 'vminstall:' || $l0 eq 'sb2install:' || $l0 eq 'required:' || $l0 eq 'support:' || $l0 eq 'keep:' || $l0 eq 'prefer:' || $l0 eq 'ignore:' || $l0 eq 'conflict:' || $l0 eq 'runscripts:' || $l0 eq 'expandflags:' || $l0 eq 'buildflags:' || $l0 eq 'publishflags:' || $l0 eq 'repourl:' || $l0 eq 'registryurl:' || $l0 eq 'assetsurl:' || $l0 eq 'onlynative:' || $l0 eq 'alsonative:' || $l0 eq 'ignorerebuild:') {
       my $t = substr($l0, 0, -1);
       for my $l (@l) {
 	if ($l eq '!*') {
@@ -500,6 +502,10 @@ sub read_config {
       next unless @l;
       $ll = shift @l;
       $config->{'optflags'}->{$ll} = join(' ', @l);
+    } elsif ($l0 eq 'sb2flags:') {
+      next unless @l;
+      $ll = shift @l;
+      $config->{'sb2flags'}->{$ll} = join(' ', @l);
     } elsif ($l0 eq 'order:') {
       for my $l (@l) {
 	if ($l eq '!*') {
@@ -553,7 +559,7 @@ sub read_config {
     }
     $no_from_scratch = 1;
   }
-  for my $l (qw{preinstall vminstall required support keep runscripts repotype patterntype ignorerebuild}) {
+  for my $l (qw{preinstall vminstall sb2install required support keep runscripts repotype patterntype ignorerebuild}) {
     $config->{$l} = [ unify(@{$config->{$l}}) ];
   }
   init_helper_hashes($config);
@@ -926,6 +932,11 @@ sub get_vminstalls {
     return ('expandpreinstalls_error') if $err;
   }
   return @{$config->{'vminstall'}};
+}
+
+sub get_sb2installs {
+  my ($config) = @_;
+  return @{$config->{'sb2install'}};
 }
 
 sub get_runscripts {
