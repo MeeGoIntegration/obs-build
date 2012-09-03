@@ -1767,6 +1767,15 @@ for RECIPEPATH in "${RECIPEFILES[@]}" ; do
         recipe_create_changelog "$RECIPEPATH"
     fi
 
+    # Do the overlay and rsync before entering any lxc or chroot
+    if test -n "$OVERLAY" ; then
+	copy_overlay
+    fi
+
+    if test -n "$RSYNCSRC" ; then
+	run_rsync
+    fi
+
     if test -n "$VM_TYPE" -a -z "$RUNNING_IN_VM" ; then
 	vm_first_stage
 	cleanup_and_exit
