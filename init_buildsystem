@@ -851,14 +851,15 @@ else
 
     # SB2 installs aren't part of the natural order, filter them out
     if test -n "$PACKAGES_TO_SB2INSTALL" ; then
-	for SB2PKG in $PACKAGES_TO_SB2INSTALL ; do
-	    for PKG in $PACKAGES_TO_INSTALL ; do
-		if [ "x$PKG" != "x$SB2PKG" ]; then
-		    NEWPACKAGES_TO_INSTALL="$NEWPACKAGES_TO_INSTALL $PKG"
+	for PKG in $PACKAGES_TO_INSTALL ; do
+	    for SB2PKG in $PACKAGES_TO_SB2INSTALL ; do
+		if [ "x$PKG" == "x$SB2PKG" ]; then
+		    PKG=""
 		fi
 	    done
-	    PACKAGES_TO_INSTALL="$NEWPACKAGES_TO_INSTALL"
+	    NEWPACKAGES_TO_INSTALL="$NEWPACKAGES_TO_INSTALL $PKG"
 	done
+	PACKAGES_TO_INSTALL="$NEWPACKAGES_TO_INSTALL"
     fi
 
     PACKAGES_TO_ALL="$PACKAGES_TO_INSTALL"
