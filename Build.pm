@@ -256,7 +256,7 @@ sub read_config {
       $ll = shift @l;
       $config->{'exportfilter'}->{$ll} = [ @l ];
     } elsif ($l0 eq 'publishfilter:') {
-      $config->{'publishfilter'} = [ @l ];
+      push @{$config->{'publishfilter'}}, @l;
     } elsif ($l0 eq 'optflags:') {
       next unless @l;
       $ll = shift @l;
