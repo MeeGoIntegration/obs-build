@@ -20,10 +20,10 @@ run_kiwi()
     	ln -s $rl$r "${rc%/*}/${rc##*/}"
     	repo="$TOPDIR/SOURCES/repos/${rc%/*}/${rc##*/}/"
         fi
-        if test "$imagetype" != product -a "$DO_INIT" != "false" ; then
+        if test "$imagetype" != product ; then
 	    echo "creating repodata for $repo"
-	    if chroot $BUILD_ROOT createrepo --no-database --simple-md-filenames --help >/dev/null 2>&1 ; then
-		chroot $BUILD_ROOT createrepo --no-database --simple-md-filenames "$repo"
+	    if chroot $BUILD_ROOT createrepo --simple-md-filenames --help >/dev/null 2>&1 ; then
+		chroot $BUILD_ROOT createrepo --simple-md-filenames "$repo"
 	    else
 		chroot $BUILD_ROOT createrepo "$repo"
 	    fi
@@ -99,7 +99,6 @@ run_kiwi()
 	    f=${i##*/}
 	    case $f in
 		*.iso) mv $i $BUILD_ROOT/$TOPDIR/KIWI/. ;;
-		*.packages) mv $i $BUILD_ROOT/$TOPDIR/OTHER/. ;;
 		scripts) ;;
 		*0) ;;
 		*) test -d $i && mv $i $BUILD_ROOT/$TOPDIR/KIWI/. ;;
@@ -115,10 +114,10 @@ run_kiwi()
 	for imgtype in $imagetype ; do
 	    echo "running kiwi --prepare for $imgtype..."
 	    # Do not use $BUILD_USER here, since we always need root permissions
-	    if chroot $BUILD_ROOT su -c "cd $TOPDIR/SOURCES && kiwi --prepare $TOPDIR/SOURCES --logfile terminal --root $TOPDIR/KIWIROOT-$imgtype $KIWI_PARAMETERS" - root < /dev/null ; then
+	    if chroot $BUILD_ROOT su -c "cd $TOPDIR/SOURCES && kiwi --prepare $TOPDIR/SOURCES --logfile terminal --root $TOPDIR/KIWIROOT-$imgtype" - root < /dev/null ; then
 		echo "running kiwi --create for $imgtype..."
 		mkdir -p $BUILD_ROOT/$TOPDIR/KIWI-$imgtype
-		chroot $BUILD_ROOT su -c "cd $TOPDIR/SOURCES && kiwi --create $TOPDIR/KIWIROOT-$imgtype --logfile terminal --type $imgtype -d $TOPDIR/KIWI-$imgtype $KIWI_PARAMETERS" - root < /dev/null || cleanup_and_exit 1
+		chroot $BUILD_ROOT su -c "cd $TOPDIR/SOURCES && kiwi --create $TOPDIR/KIWIROOT-$imgtype --logfile terminal --type $imgtype -d $TOPDIR/KIWI-$imgtype" - root < /dev/null || cleanup_and_exit 1
 	    else
 		cleanup_and_exit 1
 	    fi
@@ -137,50 +136,12 @@ run_kiwi()
 		    cat > $BUILD_ROOT/kiwi_post.sh << EOF
 echo "compressing oem images... "
 cd /$TOPDIR/KIWI-oem
-# do not store compressed file _and_ uncompressed one
-[ -e "$imageout.gz" ] && rm -f "$imageout"
 if [ -e "$imageout.iso" ]; then
 	echo "take iso file and create sha256..."
 	mv "$imageout.iso" "/$TOPDIR/KIWI/$imageout$buildnum.iso"
 	pushd /$TOPDIR/KIWI
 	if [ -x /usr/bin/sha256sum ]; then
            /usr/bin/sha256sum "$imageout$buildnum.iso" > "$imageout$buildnum.iso.sha256"
-        fi
-	popd
-fi
-if [ -e "$imageout.install.iso" ]; then
-	echo "take install.iso file and create sha256..."
-	mv "$imageout.install.iso" "/$TOPDIR/KIWI/$imageout$buildnum.install.iso"
-	pushd /$TOPDIR/KIWI
-	if [ -x /usr/bin/sha256sum ]; then
-           /usr/bin/sha256sum "$imageout$buildnum.install.iso" > "$imageout$buildnum.install.iso.sha256"
-        fi
-	popd
-fi
-if [ -e "$imageout.qcow2" ]; then
-	mv "$imageout.qcow2" "/$TOPDIR/KIWI/$imageout$buildnum.qcow2"
-	pushd /$TOPDIR/KIWI
-	if [ -x /usr/bin/sha256sum ]; then
-	    echo "Create sha256 file..."
-	    /usr/bin/sha256sum "$imageout$buildnum.qcow2" > "$imageout$buildnum.qcow2.sha256"
-        fi
-	popd
-fi
-if [ -e "$imageout.raw.install.raw" ]; then
-        compress_tool="bzip2"
-        compress_suffix="bz2"
-	if [ -x /usr/bin/xz ]; then
-            # take xz to get support for sparse files
-            compress_tool="xz -2"
-            compress_suffix="xz"
-        fi
-	mv "$imageout.raw.install.raw" "/$TOPDIR/KIWI/$imageout$buildnum.raw.install.raw"
-	pushd /$TOPDIR/KIWI
-	echo "\$compress_tool raw.install.raw file..."
-	\$compress_tool "$imageout$buildnum.raw.install.raw"
-	if [ -x /usr/bin/sha256sum ]; then
-	    echo "Create sha256 file..."
-	    /usr/bin/sha256sum "$imageout$buildnum.raw.install.raw.\${compress_suffix}" > "$imageout$buildnum.raw.install.raw.\${compress_suffix}.sha256"
         fi
 	popd
 fi
@@ -204,7 +165,7 @@ if [ -e "$imageout.raw" ]; then
 fi
 
 tar cvjfS "/$TOPDIR/KIWI/$imageout$buildnum-raw.tar.bz2" \
-	--exclude="$imageout.iso" --exclude="$imageout.raw" --exclude="$imageout.qcow2" *
+	--exclude="$imageout.iso" --exclude="$imageout.raw" *
 cd /$TOPDIR/KIWI
 if [ -x /usr/bin/sha256sum ]; then
    /usr/bin/sha256sum "$imageout$buildnum-raw.tar.bz2" > "$imageout$buildnum-raw.tar.bz2.sha256"
@@ -215,42 +176,21 @@ EOF
 		    cat > $BUILD_ROOT/kiwi_post.sh << EOF
 echo "compressing vmx images... "
 cd /$TOPDIR/KIWI-vmx
-for suffix in "ovf" "qcow2" "ova"; do
-  if [ -e "$imageout.\$suffix" ]; then
-	mv "$imageout.\$suffix" "/$TOPDIR/KIWI/$imageout$buildnum.\$suffix"
-	pushd /$TOPDIR/KIWI
-	if [ -x /usr/bin/sha256sum ]; then
-	    echo "Create sha256 \$suffix file..."
-	    /usr/bin/sha256sum "$imageout$buildnum.\$suffix" > "$imageout$buildnum.\$suffix.sha256"
-        fi
-	popd
-  fi
-done
 # This option has a number of format parameters
 VMXFILES=""
 SHAFILES=""
-for i in "$imageout.vmx" "$imageout.vmdk" "$imageout-disk*.vmdk"; do
-	test -e \$i && VMXFILES="\$VMXFILES \$i"
+for i in "$imageout.vmx" "$imageout.vmdk" "$imageout-disk*.vmdk" "$imageout.ovf"; do
+	ls \$i >& /dev/null && VMXFILES="\$VMXFILES \$i"
 done
 # take raw files as fallback
+if [ -z "\$VMXFILES" ]; then
+	ls "$imageout.raw" >& /dev/null && VMXFILES=""$imageout.raw"
+fi
 if [ -n "\$VMXFILES" ]; then
 	tar cvjfS "/$TOPDIR/KIWI/$imageout$buildnum-vmx.tar.bz2" \$VMXFILES
 	SHAFILES="\$SHAFILES $imageout$buildnum-vmx.tar.bz2"
-elif [ -e  "$imageout.raw" ]; then
-        compress_tool="bzip2"
-        compress_suffix="bz2"
-	if [ -x /usr/bin/xz ]; then
-            # take xz to get support for sparse files
-            compress_tool="xz -2"
-            compress_suffix="xz"
-        fi
-	mv "$imageout.raw" "/$TOPDIR/KIWI/$imageout$buildnum-vmx.raw"
-	pushd /$TOPDIR/KIWI
-	echo "\$compress_tool raw file..."
-	\$compress_tool "$imageout$buildnum-vmx.raw"
-	SHAFILES="\$SHAFILES $imageout$buildnum-vmx.raw.\${compress_suffix}"
-	popd
 fi
+
 if [ -e "$imageout.xenconfig" ]; then
 	tar cvjfS "/$TOPDIR/KIWI/$imageout$buildnum-vmx.tar.bz2" $imageout.xenconfig $imageout.raw initrd-*
 	SHAFILES="\$SHAFILES $imageout$buildnum-vmx.tar.bz2"
@@ -270,8 +210,6 @@ EOF
 		    cat > $BUILD_ROOT/kiwi_post.sh << EOF
 echo "compressing xen images... "
 cd /$TOPDIR/KIWI-xen
-# do not store compressed file _and_ uncompressed one
-[ -e "$imageout.gz" ] && rm -f "$imageout"
 tar cvjfS "/$TOPDIR/KIWI/$imageout$buildnum-xen.tar.bz2" \
 	`grep ^kernel $imageout.xenconfig | cut -d'"'  -f2` \
 	`grep ^ramdisk $imageout.xenconfig | cut -d'"'  -f2` \
@@ -289,8 +227,6 @@ EOF
 		    cat > $BUILD_ROOT/kiwi_post.sh << EOF
 echo "compressing pxe images... "
 cd /$TOPDIR/KIWI-pxe
-# do not store compressed file _and_ uncompressed one
-[ -e "$imageout.gz" ] && rm -f "$imageout"
 tar cvjfS "/$TOPDIR/KIWI/$imageout$buildnum-pxe.tar.bz2" ${imageout}* initrd-*
 if [ -x /usr/bin/sha256sum ]; then
    echo "Create sha256 file..."
@@ -314,29 +250,10 @@ if [ -x /usr/bin/sha256sum ]; then
 fi
 EOF
 		    ;;
-		tbz)
-		    cat > $BUILD_ROOT/kiwi_post.sh << EOF
-cd /$TOPDIR/KIWI-tbz
-for i in *.tbz; do
-        file=\$(readlink -f "\$i")
-        [ -z "\$file" ] && echo readlink failed for $i
-	mv "\$file" "/$TOPDIR/KIWI/\${i%.tbz}$buildnum.tbz"
-done
-if [ -x /usr/bin/sha256sum ]; then
-   echo "creating sha256 sum for tar balls... "
-   cd $TOPDIR/KIWI
-   for i in *.tbz; do
-	/usr/bin/sha256sum "\$i" > "\$i.sha256"
-   done
-fi
-EOF
-		    ;;
 		*)
 		    cat > $BUILD_ROOT/kiwi_post.sh << EOF
 echo "compressing unkown images... "
 cd /$TOPDIR/KIWI-$imgtype
-# do not store compressed file _and_ uncompressed one
-[ -e "$imageout.gz" ] && rm -f "$imageout"
 tar cvjfS "/$TOPDIR/KIWI/$imageout$buildnum-$imgtype.tar.bz2" *
 if [ -x /usr/bin/sha256sum ]; then
    echo "Create sha256 file..."
@@ -346,23 +263,12 @@ fi
 EOF
 		    ;;
 	    esac
-	    cat >> $BUILD_ROOT/kiwi_post.sh << EOF
-cd /$TOPDIR/KIWI-$imgtype
-if [ -e "$imageout.packages" ]; then
-   echo "Found kiwi package list file, exporting as well..."
-   cp "$imageout.packages" "/$TOPDIR/OTHER/$imageout$buildnum-$imgtype.packages"
-fi
-if [ -e "$imageout.verified" ]; then
-   echo "Found rpm verification report, exporting as well..."
-   cp "$imageout.verified" "/$TOPDIR/OTHER/$imageout$buildnum-$imgtype.verified"
-fi
-EOF
 	    chroot $BUILD_ROOT su -c "sh -e /kiwi_post.sh" || cleanup_and_exit 1
 	    rm -f $BUILD_ROOT/kiwi_post.sh
 	done
     fi
     # Hook for running post kiwi build scripts like QA scripts if installed
-    if [ -x $BUILD_ROOT/usr/lib/build/kiwi_post_run ]; then
+    if [ -x /usr/lib/build/kiwi_post_run ]; then
         chroot $BUILD_ROOT su -c /usr/lib/build/kiwi_post_run || cleanup_and_exit 1
     fi
 }

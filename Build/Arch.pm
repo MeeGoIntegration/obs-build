@@ -12,24 +12,18 @@ eval { require Archive::Tar; };
 # parse a PKGBUILD file
 
 sub quote {
-  my ($str, $q, $vars) = @_;
-  if ($q ne "'" && $str =~ /\$/) {
-    $str =~ s/\$([a-zA-Z0-9_]+|\{([^\}]+)\})/$vars->{$2 || $1} ? join(' ', @{$vars->{$2 || $1}}) : "\$$1"/ge;
-  }
-  $str =~ s/([ \t\"\'\$])/sprintf("%%%02X", ord($1))/ge;
+  my ($str) = @_;
+  $str =~ s/([ \t\"\'])/sprintf("%%%02X", ord($1))/ge;
   return $str;
 }
 
 sub unquotesplit {
-  my ($str, $vars) = @_;
+  my ($str) = @_;
   $str =~ s/%/%25/g;
   $str =~ s/^[ \t]+//;
   while ($str =~ /([\"\'])/) {
     my $q = $1;
-    last unless $str =~ s/$q(.*?)$q/quote($1, $q, $vars)/e;
-  }
-  if ($str =~ /\$/) {
-    $str =~ s/\$([a-zA-Z0-9_]+|\{([^\}]+)\})/$vars->{$2 || $1} ? join(' ', @{$vars->{$2 || $1}}) : "\$$1"/ge;
+    $str =~ s/$q(.*?)$q/quote($1)/e;
   }
   my @args = split(/[ \t]+/, $str);
   for (@args) {
@@ -62,14 +56,12 @@ sub parse {
 	$val .= ' ' . $nextline;
       }
     }
-    $vars{$var} = [ unquotesplit($val, \%vars) ];
+    $vars{$var} = [ unquotesplit($val) ];
   }
   close PKG;
   $ret->{'name'} = $vars{'pkgname'}->[0] if $vars{'pkgname'};
   $ret->{'version'} = $vars{'pkgver'}->[0] if $vars{'pkgver'};
   $ret->{'deps'} = $vars{'makedepends'} || [];
-  push @{$ret->{'deps'}}, @{$vars{'depends'} || []};
-  $ret->{'source'} = $vars{'source'} if $vars{'source'};
   return $ret;
 }
 
@@ -96,9 +88,8 @@ sub lzmadec {
   return $nh;
 }
 
-sub queryvars {
-  my ($handle) = @_;
-
+sub query {
+  my ($handle, %opts) = @_;
   if (ref($handle)) {
     die("arch pkg query not implemented for file handles\n");
   }
@@ -111,50 +102,23 @@ sub queryvars {
   my $pkginfo = $read[0]->get_content;
   die("$handle: not an arch package file\n") unless $pkginfo;
   my %vars;
-  $vars{'_pkginfo'} = $pkginfo;
   for my $l (split('\n', $pkginfo)) {
     next unless $l =~ /^(.*?) = (.*)$/;
     push @{$vars{$1}}, $2;
   }
-  return \%vars;
-}
-
-sub queryfiles {
-  my ($handle) = @_;
-  if (ref($handle)) {
-    die("arch pkg query not implemented for file handles\n");
-  }
-  if ($handle =~ /\.xz$/ || islzma($handle)) {
-    $handle = lzmadec($handle);
-  }
-  my @files;
-  my $tar = Archive::Tar->new;
-  # we use filter_cb here so that Archive::Tar skips the file contents
-  $tar->read($handle, 1, {'filter_cb' => sub {
-    my ($entry) = @_;
-    push @files, $entry->name unless $entry->is_longlink || (@files && $files[-1] eq $entry->name);
-    return 0;
-  }});
-  shift @files if @files && $files[0] eq '.PKGINFO';
-  return \@files;
-}
-
-sub query {
-  my ($handle, %opts) = @_;
-  my $vars = queryvars($handle);
   my $ret = {};
-  $ret->{'name'} = $vars->{'pkgname'}->[0] if $vars->{'pkgname'};
-  $ret->{'hdrmd5'} = Digest::MD5::md5_hex($vars->{'_pkginfo'});
-  $ret->{'provides'} = $vars->{'provides'} || [];
-  $ret->{'requires'} = $vars->{'depend'} || [];
-  if ($vars->{'pkgname'}) {
-    my $selfprovides = $vars->{'pkgname'}->[0];
-    $selfprovides .= "=$vars->{'pkgver'}->[0]" if $vars->{'pkgver'};
+  $ret->{'name'} = $vars{'pkgname'}->[0] if $vars{'pkgname'};
+  $ret->{'hdrmd5'} = Digest::MD5::md5_hex($pkginfo);
+  $ret->{'provides'} = $vars{'provides'} || [];
+  $ret->{'requires'} = $vars{'depend'} || [];
+  if ($vars{'pkgname'}) {
+    my $selfprovides = $vars{'pkgname'}->[0];
+    $selfprovides .= "=$vars{'pkgver'}->[0]" if $vars{'pkgver'};
     push @{$ret->{'provides'}}, $selfprovides unless @{$ret->{'provides'} || []} && $ret->{'provides'}->[-1] eq $selfprovides;
   }
   if ($opts{'evra'}) {
-    if ($vars->{'pkgver'}) {
-      my $evr = $vars->{'pkgver'}->[0];
+    if ($vars{'pkgver'}) {
+      my $evr = $vars{'pkgver'}->[0];
       if ($evr =~ /^([0-9]+):(.*)$/) {
 	$ret->{'epoch'} = $1;
 	$evr = $2;
@@ -165,10 +129,10 @@ sub query {
 	$ret->{'release'} = $2;
       }
     }
-    $ret->{'arch'} = $vars->{'arch'}->[0] if $vars->{'arch'};
+    $ret->{'arch'} = $vars{'arch'}->[0] if $vars{'arch'};
   }
   if ($opts{'description'}) {
-    $ret->{'description'} = $vars->{'pkgdesc'}->[0] if $vars->{'pkgdesc'};
+    $ret->{'description'} = $vars{'pkgdesc'}->[0] if $vars{'pkgdesc'};
   }
   # arch packages don't seem to have a source :(
   # fake it so that the package isn't confused with a src package

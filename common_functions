@@ -2,40 +2,27 @@
 
 : ${CACHE_DIR:=/var/cache/build}
 
-build_host_arch()
-{
-    : ${BUILD_HOST_ARCH:=`uname -m`}
-    # avoid multiple initvm.* helpers for i586 and i686
-    test i686 != "$BUILD_HOST_ARCH" || BUILD_HOST_ARCH=i586
-}
-
 set_build_arch()
 {
-    build_host_arch
+    : ${BUILD_HOST_ARCH:=`uname -m`}
 
     if [ -z "$BUILD_ARCH" ]; then
 	BUILD_ARCH="$BUILD_HOST_ARCH"
+	test i686 != "$BUILD_ARCH" || BUILD_ARCH=i586 # XXX: why?
     fi
 
     case $BUILD_ARCH in
-      armv7hl) BUILD_ARCH="armv7hl:armv7l:armv6hl:armv6l:armv5tel" ;;
-      armv7l) BUILD_ARCH="armv7l:armv6l:armv5tel" ;;
-      armv6hl) BUILD_ARCH="armv6hl:armv6l:armv5tel" ;;
-      armv6l) BUILD_ARCH="armv6l:armv5tel" ;;
-      armv5tel) BUILD_ARCH="armv5tel" ;;
       i686) BUILD_ARCH="i686:i586:i486:i386" ;;
       i586) BUILD_ARCH="i586:i486:i386" ;;
       i486) BUILD_ARCH="i486:i386" ;;
       i386) BUILD_ARCH="i386" ;;
-      ppc64) BUILD_ARCH="ppc64:ppc" ;;
-      ppc64le) BUILD_ARCH="ppc64le" ;;
+      x86_64) BUILD_ARCH="x86_64:i686:i586:i486:i386" ;;
       sparc64v) BUILD_ARCH="sparc64v:sparc64:sparcv9v:sparcv9:sparcv8:sparc" ;;
       sparc64) BUILD_ARCH="sparc64:sparcv9:sparcv8:sparc" ;;
       sparcv9v) BUILD_ARCH="sparcv9v:sparcv9:sparcv8:sparc" ;;
       sparcv9) BUILD_ARCH="sparcv9:sparcv8:sparc" ;;
       sparcv8) BUILD_ARCH="sparcv8:sparc" ;;
       sparc) BUILD_ARCH="sparc" ;;
-      x86_64) BUILD_ARCH="x86_64:i686:i586:i486:i386" ;;
     esac
     if test "$BUILD_ARCH" != "${BUILD_ARCH#i686}" ; then
 	cpuflags=`grep ^flags /proc/cpuinfo`
@@ -55,28 +42,212 @@ check_exit()
     fi
 }
 
+is_emulator_arch()
+{
+    local arch
+    for arch in $EMULATOR_ARCHS; do
+	if test "$BUILD_ARCH" = "$arch" -a "$BUILD_HOST_ARCH" != "$arch"; then
+	    return 0
+	fi
+    done
+    return 1
+}
+
+internal_set_sb2_settings() {
+        SB2_TOOLCHAIN="/unknown"
+        SB2_INSTALLMODE="obs-rpm-install"
+        SB2_DEFAULTMODE="obs-rpm-build"
+        SB2_SYSROOT="-C --sysroot=/ -L --sysroot=/"
+        SB2_MAPPING_METHOD="both"
+        SB2_DEBUG=""
+        SB2_QEMU="/unknown"
+        while test -n "$1" ; do
+	    case "$1" in
+		--toolchain)
+		    shift
+		    SB2_TOOLCHAIN=$1
+		    shift
+		    ;;
+		--installmode)
+		    shift
+		    SB2_INSTALLMODE=$1
+		    shift
+		    ;;
+		--defaultmode)
+		    shift
+		    SB2_DEFAULTMODE=$1
+		    shift
+		    ;;
+		--mappingmethod)
+		    shift 
+		    SB2_MAPPING_METHOD=$1
+		    shift
+		    ;;
+		--bootstrap)
+		    shift
+		    SB2_SYSROOT=""
+		    ;;
+		--qemu)
+		    shift
+		    SB2_QEMU=$1
+		    shift
+		    ;;
+		--infologs)
+		    shift
+		    SB2_DEBUG="-q -L info"
+		    ;;
+		--debug)
+		    shift
+		    SB2_DEBUG="-q -d"
+		    ;;
+		*)
+		    break
+		    ;;
+	    esac
+	done
+	if [ "x$SB2_TOOLCHAIN" = "x/unknown" ]; then
+		echo "Please provide a proper SB2 toolchain in SB2flags. exiting.."
+		cleanup_and_exit 1
+	fi
+}
+
+
+cleanup_sb2() {
+	if [ ! -z "$BUILD_SB2FLAGS" ]; then
+		if [ -e /home/abuild/sb2-session-needroot ]; then
+			su -c "cd $PWD; /usr/bin/sb2 -t oscbuild -D /home/abuild/sb2-session-needroot" - abuild
+		fi
+		if [ -e /home/abuild/sb2-session-needuser ]; then
+			su -c "cd $PWD; /usr/bin/sb2 -t oscbuild -D /home/abuild/sb2-session-needuser" - abuild
+		fi
+	fi
+}
+
+shellquote()
+{
+    for arg; do
+	arg=${arg/\\/\\\\}
+	arg=${arg/\$/\\\$}
+	arg=${arg/\"/\\\"}
+	arg=${arg/\`/\\\`}
+	echo -n " \"$arg\""
+    done
+}
+
+
+# chroot-like wrapper, enter_target <mode: needroot|user> $TARGET commands
+# needroot - operations that need to be done as root, like unpacking into file system, etc
+# needuser - operations that will be done as non-root user
+
+enter_target() {
+	if [ -z "$BUILD_SB2FLAGS" ]; then
+		if [ x$1 == xneeduser ]; then
+			shift
+			PARAMS=`shellquote "$@"`
+			chroot $BUILD_TARGET su -c "$PARAMS" - $BUILD_USER
+		elif [ x$1 == xneedscript ]; then
+			shift
+			SCRIPT=$1
+			shift
+			chroot $BUILD_TARGET su -s $SCRIPT $BUILD_USER -- "$@"
+		else
+			shift
+			chroot $BUILD_TARGET "$@"
+		fi			
+	else
+		if [ -z "$VM_TYPE" ]; then
+			echo "SB2 currently does not work with chroots.."
+			cleanup_and_exit 1
+		fi
+		if [ -z "$SB2_TOOLCHAIN" ]; then
+			internal_set_sb2_settings $BUILD_SB2FLAGS
+		fi
+		if [ ! -e $BUILD_TARGET/.sb2inited ]; then
+			ORIG=$PWD
+			cd $BUILD_TARGET
+			su -c "cd $PWD; /usr/bin/sb2-init $SB2_SYSROOT -c $SB2_QEMU -n -N -m $SB2_DEFAULTMODE -t / oscbuild $SB2_TOOLCHAIN" - abuild
+			su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv SBOX_MAPPING_METHOD $SB2_MAPPING_METHOD" - abuild
+
+			cd $ORIG
+			touch $BUILD_TARGET/.sb2inited
+		fi
+		if [ x$1 = xneedscript ]; then
+			PARAM=needuser
+		else
+			PARAM=$1
+		fi
+		case "$PARAM" in
+			needroot)
+				shift
+				ORIG=$PWD
+				cd /target
+		                if [ ! -e /home/abuild/sb2-session-needroot ]; then
+			            	SESSION="-S /home/abuild/sb2-session-needroot -t oscbuild"
+			        else
+        			       	SESSION="-J /home/abuild/sb2-session-needroot"
+        		        fi
+				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv HOME /root" - abuild
+	  	                su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv USER root" - abuild
+	  	                PARAMS=`shellquote "$@"`
+				su -c "cd $PWD; /usr/bin/sb2 $SESSION $SB2_DEBUG -m $SB2_INSTALLMODE -R $PARAMS" - abuild
+				RET=$?
+				cd $ORIG
+				return $RET
+				;;
+			needuser)
+				# Debugging
+				shift
+				ORIG=$PWD
+				cd /target
+		                if [ ! -e /home/abuild/sb2-session-needuser ]; then
+			            	SESSION="-S /home/abuild/sb2-session-needuser -t oscbuild"
+			        else
+        			       	SESSION="-J /home/abuild/sb2-session-needuser"
+        		        fi
+        		        PARAMS=`shellquote "$@"`
+
+				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv HOME /home/abuild" - abuild
+	  	                su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv USER abuild" - abuild
+				su -c "cd $PWD; /usr/bin/sb2 $SESSION $SB2_DEBUG -m $SB2_DEFAULTMODE $PARAMS" - abuild
+				RET=$?
+				cd $ORIG
+				return $RET
+				;;
+			*)
+				echo "Unknown parameter $1" >&2
+				;;
+		esac
+	fi
+}
+
+
 check_use_emulator()
 {
-    arch=":$BUILD_ARCH:"
-    if test "$arch" != "${arch/:$BUILD_HOST_ARCH:/}"; then
-        # native supported arch, no emulator
-        return 1
+    is_emulator_arch || return
+
+    if [ -z "$VM_TYPE" ]; then
+	return 0
     fi
 
     # to run the qemu initialization in the XEN chroot, we need to
     # register it with a static program or shell script
-    if test -e $BUILD_DIR/initvm.$BUILD_HOST_ARCH && \
-        test -e $BUILD_DIR/qemu-reg; then
-	chmod 0755 "$BUILD_DIR/initvm.$BUILD_HOST_ARCH"
-        if [ -z "$PREPARE_VM" ]; then
-             return 0	# chroot build, we need to run
-        fi
-        # emulator in vm already registered during startup
-    else
-        # XXX: error?
-        echo "Warning: cross compile not possible due to missing static binaries. please install build-initvm package for that purpose."
-        echo "         check that the right architecture is available for your build host, you need initvm.$BUILD_HOST_ARCH for this one."
-    fi
+    case "$BUILD_HOST_ARCH" in
+	i?86|x86_64)
+	    if test -e $BUILD_DIR/initvm && \
+		test -e $BUILD_DIR/qemu-reg; then
+		return 0	# prefer initvm to handle registration
+	    elif test -e /bin/bash-static \
+		-a -e /bin/mount-static \
+		-a -e /usr/sbin/qemu-binfmt-conf.sh; then
+		return 0	# as backup use /usr/sbin/qemu-binfmt.conf.sh
+	    elif [ -n "$BUILD_SB2FLAGS" ]; then
+	        return 0 # Use sb2
+	    else
+		# XXX: error?
+		echo "Warning: cross compile not possible due to missing static binaries"
+	    fi
+	;;
+    esac
     return 1
 }
 

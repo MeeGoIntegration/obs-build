@@ -18,7 +18,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
 
 shopt -s nullglob
 
@@ -133,24 +133,6 @@ set +e
 	elif [ ! $just_edit ]; then
 		echo "- "
 		echo
-		if [ -d .osc -a -n "$(which osc 2>/dev/null)" ]; then
-			OSC_STATUS="$(cd "$pkgpath" &> /dev/null; osc st)"
-			ADDED="$(sed -n 's/^A[[:blank:]]\+\([^[:blank:]].*\.\(patch\|diff\)\)$/  * \1/p' <<< "$OSC_STATUS")"
-			DELETED="$(sed -n 's/^D[[:blank:]]\+\([^[:blank:]].*\.\(patch\|diff\)\)$/  * \1/p' <<< "$OSC_STATUS")"
-			MODIFIED="$(sed -n 's/^M[[:blank:]]\+\([^[:blank:]].*\.\(patch\|diff\)\)$/  * \1/p' <<< "$OSC_STATUS")"
-			if [ -n "$ADDED" ]; then
-			    echo "- added patches:"
-			    echo "$ADDED"
-			fi
-			if [ -n "$DELETED" ]; then
-			    echo "- removed patches:"
-			    echo "$DELETED"
-			fi
-			if [ -n "$MODIFIED" ]; then
-			    echo "- modified patches:"
-			    echo "$MODIFIED"
-			fi
-		fi
 	fi
 	cat $changelog
 } >> "$tmpfile"

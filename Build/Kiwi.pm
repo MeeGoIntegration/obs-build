@@ -100,19 +100,6 @@ sub findFallBackArchs {
   return @fa
 }
 
-# sles10 perl does not have the version.pm
-# implement own hack
-sub versionstring {
-  my ($str) = @_;
-  my @xstr = split (/\./,$str);
-  my $result = 0;
-  while (my $digit = shift(@xstr)) {
-    $result = $result * 100;
-    $result += $digit;
-  }
-  return $result;
-}
-
 sub kiwiparse {
   my ($xml, $arch, $count) = @_;
   $count ||= 0;
@@ -125,12 +112,9 @@ sub kiwiparse {
   my @packages;
   my @extrasources;
   my @requiredarch;
-  my $schemaversion = 0;
-  my $schemaversion56 = versionstring("5.6");
   my $kiwi = parsexml($xml);
   die("not a kiwi config\n") unless $kiwi && $kiwi->{'image'};
   $kiwi = $kiwi->{'image'}->[0];
-  $schemaversion = versionstring($kiwi->{'schemaversion'}) if $kiwi->{'schemaversion'}; 
   $ret->{'filename'} = $kiwi->{'name'} if $kiwi->{'name'};
   my $description = (($kiwi->{'description'} || [])->[0]) || {};
   if ($description->{'specification'}) {
@@ -147,7 +131,6 @@ sub kiwiparse {
       if (defined $type->{'image'}) {
         # for kiwi 4.1 and 5.x
         push @types, $type->{'image'};
-        push @packages, "kiwi-image:$type->{'image'}" if $schemaversion >= $schemaversion56;
       } else {
         # for kiwi 3.8 and before
         push @types, $type->{'_content'};
@@ -173,26 +156,15 @@ sub kiwiparse {
 
   my $instsource = ($kiwi->{'instsource'} || [])->[0];
   if ($instsource) {
-    for my $repository(sort {$a->{priority} <=> $b->{priority}} @{$instsource->{'instrepo'} || []}) {
+    foreach my $repository(sort {$a->{priority} <=> $b->{priority}} @{$instsource->{'instrepo'} || []}) {
       my $kiwisource = ($repository->{'source'} || [])->[0];
-      if ($kiwisource->{'path'} eq 'obsrepositories:/') {
-         # special case, OBS will expand it.
-         push @repos, '_obsrepositories';
-         next;
-      }
       die("bad instsource path: $kiwisource->{'path'}\n") unless $kiwisource->{'path'} =~ /^obs:\/\/\/?([^\/]+)\/([^\/]+)\/?$/;
       push @repos, "$1/$2";
     }
-    $ret->{'sourcemedium'} = -1;
-    $ret->{'debugmedium'} = -1;
     if ($instsource->{'productoptions'}) {
       my $productoptions = $instsource->{'productoptions'}->[0] || {};
       for my $po (@{$productoptions->{'productvar'} || []}) {
 	$ret->{'version'} = $po->{'_content'} if $po->{'name'} eq 'VERSION';
-      }
-      for my $po (@{$productoptions->{'productoption'} || []}) {
-	$ret->{'sourcemedium'} = $po->{'_content'} if $po->{'name'} eq 'SOURCEMEDIUM';
-	$ret->{'debugmedium'} = $po->{'_content'} if $po->{'name'} eq 'DEBUGMEDIUM';
       }
     }
     if ($instsource->{'architectures'}) {
@@ -203,15 +175,6 @@ sub kiwiparse {
     }
   }
 
-  # set default values for priority
-  for (@{$kiwi->{'repository'} || []}) {
-    next if defined $_->{'priority'};
-    if ($preferences->[0]->{'packagemanager'}->[0]->{'_content'} eq 'smart') {
-       $_->{'priority'} = 0;
-    } else {
-       $_->{'priority'} = 99;
-    }
-  }
   my @repositories = sort {$a->{'priority'} <=> $b->{'priority'}} @{$kiwi->{'repository'} || []};
   if ($preferences->[0]->{'packagemanager'}->[0]->{'_content'} eq 'smart') {
     @repositories = reverse @repositories;
@@ -219,10 +182,6 @@ sub kiwiparse {
   for my $repository (@repositories) {
     my $kiwisource = ($repository->{'source'} || [])->[0];
     next if $kiwisource->{'path'} eq '/var/lib/empty';	# grr
-    if ($kiwisource->{'path'} eq 'obsrepositories:/') {
-      push @repos, '_obsrepositories';
-      next;
-    };
     die("bad path using not obs:/ URL: $kiwisource->{'path'}\n") unless $kiwisource->{'path'} =~ /^obs:\/\/\/?([^\/]+)\/([^\/]+)\/?$/;
     push @repos, "$1/$2";
   }
@@ -230,10 +189,7 @@ sub kiwiparse {
   # Find packages and possible additional required architectures
   my @additionalarchs;
   my @pkgs;
-  for my $packages (@{$kiwi->{'packages'}}) {
-    next if $packages->{'type'} and $packages->{'type'} ne 'image' and $packages->{'type'} ne 'bootstrap';
-    push @pkgs, @{$packages->{'package'}} if $packages->{'package'};
-  }
+  push @pkgs, @{$kiwi->{'packages'}->[0]->{'package'}} if $kiwi->{'packages'};
   if ($instsource) {
     push @pkgs, @{$instsource->{'metadata'}->[0]->{'repopackage'} || []} if $instsource->{'metadata'};
     push @pkgs, @{$instsource->{'repopackages'}->[0]->{'repopackage'} || []} if $instsource->{'repopackages'};

@@ -113,7 +113,7 @@ for my $line (@$xspec) {
     }
   }
 
-  if ($line =~ /^Release\s*:\s*(.*?)\s*$/i) {
+  if ($line =~ /^Release:\s*(.*)\s*$/i) {
     my $spec_rel = $1; # User-provided value
     my $oldl = $line;
     if (defined $release) {
@@ -130,17 +130,17 @@ for my $line (@$xspec) {
 	    $line =~ s/<B_CNT>/$b/;
 	  }
 	} else {
-	  # no special replacement rules in the line, simply replace
-	  $line =~ s/^(Release\s*:\s*).*/$1$release/i;
-	  $line =~ s/<SPEC_REL>/$spec_rel/g;
+	  $line =~ s/^(Release:\s*).*/$1$release/i;
 	}
       }
-      $line =~ s/<SPEC_REL>//g;	# no recursion please
+      # May be passed in via prjconf in $release so must be done late.
+      $line =~ s/<SPEC_REL>/$spec_rel/;
     } else {
       # remove macros, as rpm doesn't like them
       $line =~ s/<RELEASE\d*>/0/;
       $line =~ s/<CI_CNT>/0/;
       $line =~ s/<B_CNT>/0/;
+      $line =~ s/<SPEC_REL>/0/;
     }
     # this is to be compatible to legacy autobuild.
     # you can specify a releaseprg in the project configuration,

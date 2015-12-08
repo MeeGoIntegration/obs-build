@@ -60,8 +60,8 @@ $configdir = '.' unless defined $configdir;
 $archs = '' unless defined $archs;
 die("you must specfiy a depfile!\n") unless defined $rpmdeps;
 
-my @extradeps = grep {!/(^|\/)(?:PKGBUILD|_preinstallimage)$/ && !/\.(?:spec|dsc|kiwi)$/} @ARGV;
-my @specs = grep {/(^|\/)(?:PKGBUILD|_preinstallimage)$/ || /\.(?:spec|dsc|kiwi)$/} @ARGV;
+my @extradeps = grep {!/(^|\/)PKGBUILD$/ && !/\.(?:spec|dsc|kiwi)$/} @ARGV;
+my @specs = grep {/(^|\/)PKGBUILD$/ || /\.(?:spec|dsc|kiwi)$/} @ARGV;
 die("can only work with at most one spec\n") if @specs > 1;
 my $spec = $specs[0];
 
@@ -201,6 +201,9 @@ sub print_rpmlist
   }
   print "preinstall: @{$cf->{'preinstall'} || []}\n";
   print "vminstall: @{$cf->{'vminstall'} || []}\n";
+  print "cbpreinstall: @{$cf->{'cbpreinstall'} || []}\n"; # preinstall if is_emulator_arch
+  print "cbinstall: @{$cf->{'cbinstall'} || []}\n";       # install if is_emulator_arch
+  print "sb2install: @{$cf->{'sb2install'} || []}\n";       # install if is_emulator_arch
   print "runscripts: @{$cf->{'runscripts'} || []}\n";
   print "dist: $dist\n" if defined $dist;
 }
@@ -244,19 +247,11 @@ $subpacks = [];
 if ($spec) {
   my $d;
   if ($spec =~ /\.kiwi$/) {
-    # lets see if this is a product or image build
-    $d = Build::parse($cf, $spec) || {};
-    my $type = $d->{'imagetype'} && $d->{'imagetype'}->[0] eq 'product' ? 'product' : 'image';
-    my @kdeps;
-    if ($type eq 'image') {
-      @kdeps = @{$cf->{'substitute'}->{'kiwi-setup:image'} || []};
-      @kdeps = ('kiwi', 'createrepo', 'tar') unless @kdeps;
-    } else {
-      @kdeps = @{$cf->{'substitute'}->{'kiwi-setup:product'} || []};
-      @kdeps = ('kiwi') unless @kdeps;
-    }
-    push @kdeps, grep {/^kiwi-.*:/} @{$d->{'deps'} || []};
-    $d = { 'deps' => \@kdeps, 'subpacks' => [] };
+    # just set up kiwi root for now
+    $d = {
+      'deps' => [ 'kiwi', 'zypper', 'createrepo', 'squashfs' ],
+      'subpacks' => [],
+    };
   } else {
     $d = Build::parse($cf, $spec);
   }
@@ -264,10 +259,7 @@ if ($spec) {
   $packvers = $d->{'version'};
   $subpacks = $d->{'subpacks'};
   @packdeps = @{$d->{'deps'} || []};
-  if ($d->{'prereqs'}) {
-    my %deps = map {$_ => 1} (@packdeps, @{$d->{'subpacks'} || []});
-    push @packdeps, grep {!$deps{$_} && !/^%/} @{$d->{'prereqs'}};
-  }
+  push(@packdeps, @{$d->{'prereqs'}}) if $d->{'prereqs'};
 }
 
 Build::readdeps($cf, undef, \%repo);
@@ -281,9 +273,5 @@ if (!shift @bdeps) {
   print STDERR "  $_\n" for @bdeps;
   exit(1);
 }
-
-# make sure all preinstalls are in bdeps;
-# XXX: also add vmdeps?
-@bdeps = Build::unify(@bdeps, Build::get_preinstalls($cf));
 
 print_rpmlist(@bdeps);

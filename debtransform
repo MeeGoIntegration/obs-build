@@ -52,83 +52,26 @@ sub writedsc {
 }
 
 sub listtar {
-  my ($tar, $skipdebiandir) = @_;
+  my ($tar) = @_;
   local *F;
   my @c;
-  unless(defined($skipdebiandir)) {
-    $skipdebiandir = 1;
-  }
   open(F, '-|', 'tar', '--numeric-owner', '-tvf', $tar) || die("tar: $!\n");
   while(<F>) {
     next unless /^([-dlbcp])(.........)\s+\d+\/\d+\s+(\S+) \d\d\d\d-\d\d-\d\d \d\d:\d\d(?::\d\d)? (.*)$/;
     my ($type, $mode, $size, $name) = ($1, $2, $3, $4);
     next if $type eq 'd';
-    if ($type eq 'l') {
-      next if $skipdebiandir eq 0;
-      die("debian tar contains link: $name\n");
-    }
-    if ($type ne '-') {
-      next if $skipdebiandir eq 0;
-      die("debian tar contains unexpected file type: $name\n");
-    }
+    die("debian tar contains link: $name\n") if $type eq 'l';
+    die("debian tar contains unexpected file type: $name\n") if $type ne '-';
     $name =~ s/^\.\///;
-    $name =~ s/^debian\/// if $skipdebiandir eq 1;
+    $name =~ s/^debian\///;
     push @c, {'name' => $name, 'size' => $size};
   }
   close(F) || die("tar: $!\n");
   return @c;
 }
 
-sub extracttar {
-  my ($tar, $filename, $s) = @_;
-  local *F;
-  open(F, '-|', 'tar', '-xOf', $tar, $filename) || die("tar: $!\n");
-  my $file = '';
-  while ($s > 0) {
-    my $l = sysread(F, $file, $s, length($file));
-    die("tar read error\n") unless $l;
-    $s -= $l;
-  }
-  my @file = split("\n", $file);
-  close(F);
-  return @file;
-}
-
-sub dodiff {
-  my ($oldname, $newname, $origtarfile, @content) = @_;
-  my @oldcontent;
-  for my $c (@{$origtarfile->{'content'}}) {
-      if ($c->{'name'} eq $newname) {
-          @oldcontent = extracttar($origtarfile->{'name'}, $c->{'name'}, $c->{'size'});
-      }
-  }
-  if ($newname eq $origtarfile->{'tardir'}."/debian/changelog") {
-    my $firstline = $content[0];
-    my $version = $firstline;
-    $version =~ s/.*\((.*)\).*/$1/g;
-    if ($version ne $origtarfile->{'version'}) {
-      $firstline =~ s/\(.*\)/($origtarfile->{'version'})/g;
-      my $date = `date -R`;
-      chomp($date);
-      my @newcontent = ($firstline, "", "  * version number update by debtransform", "", " -- debtransform <build\@opensuse.org>  ".$date, "");
-      push(@newcontent, @content);
-      @content = @newcontent;
-    }
-  }
-  return unless @content;
-  print DIFF "--- $oldname\n";
-  print DIFF "+++ $newname\n";
-  if (@oldcontent) {
-    print DIFF "\@\@ -1,".scalar(@oldcontent)." +1,".scalar(@content)." \@\@\n";
-    print DIFF "-$_\n" for @oldcontent;
-  } else {
-    print DIFF "\@\@ -0,0 +1,".scalar(@content)." \@\@\n";
-  }
-  print DIFF "+$_\n" for @content;
-}
-
 sub dotar {
-  my ($tar, $tardir, $origin, $origtarfile, @c) = @_;
+  my ($tar, $tardir, $origin, @c) = @_;
   local *F;
   open(F, '-|', 'tar', '-xOf', $tar) || die("tar: $!\n");
   for my $c (@c) {
@@ -141,19 +84,27 @@ sub dotar {
     }
     next if $origin && $origin->{$c->{'name'}} ne $tar;
     my @file = split("\n", $file);
-    dodiff("$tardir.orig/debian/$c->{'name'}", "$tardir/debian/$c->{'name'}", $origtarfile, @file);
+    print DIFF "--- $tardir.orig/debian/$c->{'name'}\n";
+    print DIFF "+++ $tardir/debian/$c->{'name'}\n";
+    next unless @file;
+    print DIFF "\@\@ -0,0 +1,".scalar(@file)." \@\@\n";
+    print DIFF "+$_\n" for @file;
   }
   close(F);
 }
 
 sub dofile {
-  my ($file, $tardir, $dfile, $origtarfile) = @_;
+  my ($file, $tardir, $dfile) = @_;
   local *F;
   open(F, '<', $file) || die("$file: $!\n");
   my @file = <F>;
   close F;
   chomp(@file);
-  dodiff("$tardir.orig/$dfile", "$tardir/$dfile", $origtarfile, @file);
+  print DIFF "--- $tardir.orig/$dfile\n";
+  print DIFF "+++ $tardir/$dfile\n";
+  return unless @file;
+  print DIFF "\@\@ -0,0 +1,".scalar(@file)." \@\@\n";
+  print DIFF "+$_\n" for @file;
 }
 
 sub doseries {
@@ -239,7 +190,7 @@ if ($tags->{'DEBTRANSFORM-FILES-TAR'}) {
 }
 
 if (!$tarfile || !@debtarfiles) {
-  my @tars = grep {/\.tgz$|\.tar(?:\.gz|\.bz2)?$/} @dir;
+  my @tars = grep {/\.tar(?:\.gz|\.bz2)?$/} @dir;
   my @debtars = grep {/^debian\.tar(?:\.gz|\.bz2)?$/} @tars;
   if (!$tarfile) {
     @tars = grep {!/^debian\.tar(?:\.gz|\.bz2)?$/} @tars;
@@ -279,13 +230,10 @@ if ($tarfile =~ /\.zip/) {
     print "converting $dir/$old to $tarfile\n";
     system( ( "debtransformzip", "$dir/$old", "$tmptar" )) == 0 || die("cannot transform .zip to .tar.gz");
 }
-if ($tarfile =~ /\.tgz$/) {
-    my $old = $tarfile;
-    $tarfile =~ s/\.tgz/\.tar.gz/;
-    $tmptar = "$out/$tarfile";
-    print "renaming $dir/$old to $tarfile\n";
-    system ( ("mv",  "$dir/$old",  "$tmptar" ) ) == 0 || die("cannot rename .tgz to .tar.gz");
-}
+
+my $tardir = $tarfile;
+$tardir =~ s/\.orig\.tar/\.tar/;
+$tardir =~ s/\.tar.*?$//;
 
 my @files;
 my $v = $version;
@@ -299,13 +247,6 @@ if( $tmptar ) {
   link("$dir/$tarfile", "$out/$ntarfile") || die("link $dir/$tarfile $out/$ntarfile: $!\n");
 }
 push @files, addfile("$out/$ntarfile");
-
-my $tarpath = "$out/$ntarfile";
-my $tardir = $tarfile;
-$tardir =~ s/\.orig\.tar/\.tar/;
-$tardir =~ s/\.tar.*?$//;
-my @tarfilecontent = listtar($tarpath, 0);
-my $origtarfile = { 'name', $tarpath, 'content', \@tarfilecontent, 'version', $tags->{'VERSION'}, 'tardir', $tardir};
 
 open(DIFF, '>', "$out/${name}_$version.diff") || die("$out/${name}_$version.diff: $!\n");
 
@@ -323,23 +264,17 @@ for my $debtarfile (@debtarfiles) {
   }
 }
 
-dofile($changelog, $tardir, 'debian/changelog', $origtarfile) if defined $changelog;
-
-if ($tags->{'DEBTRANSFORM-FILES'}) {
-  for my $file (split(' ', $tags->{'DEBTRANSFORM-FILES'})) {
-    dofile("$dir/$file", $tardir, $file, $origtarfile);
-  }
-}
+dofile($changelog, $tardir, 'debian/changelog') if defined $changelog;
 
 for my $debtarfile (@debtarfiles) {
-  dotar("$dir/$debtarfile", $tardir, \%debtarorigin, $origtarfile, @{$debtarcontent{$debtarfile} });
+  dotar("$dir/$debtarfile", $tardir, \%debtarorigin, @{$debtarcontent{$debtarfile} });
 }
 
 for my $file (grep {/^debian\./} @dir) {
   next if $file eq 'debian.series';
   next if $file =~ /\.tar$/;
   next if $file =~ /\.tar\./;
-  dofile("$dir/$file", $tardir, 'debian/'.substr($file, 7), $origtarfile);
+  dofile("$dir/$file", $tardir, 'debian/'.substr($file, 7));
 }
 
 if ($tags->{'DEBTRANSFORM-SERIES'}) {
@@ -367,6 +302,5 @@ $tags->{'FILES'} = "\n".join("\n", @files);
 delete $tags->{'DEBTRANSFORM-SERIES'};
 delete $tags->{'DEBTRANSFORM-TAR'};
 delete $tags->{'DEBTRANSFORM-FILES-TAR'};
-delete $tags->{'DEBTRANSFORM-FILES'};
 writedsc("$out/${name}_$version.dsc", $tags);
 exit(0);

@@ -34,12 +34,8 @@ my $repomdparser = {
   repomd => {
     data => {
       _start => \&repomd_handle_data_start,
-      _end => \&repomd_handle_data_end,
       location => {
 	_start => \&repomd_handle_location,
-      },
-      size => {
-	_text => \&repomd_handle_size,
       },
     },
   },
@@ -76,26 +72,16 @@ my $primaryparser = {
 # [ [tag, \%], ... ]
 my @cursor = ();
 
-my %datafile;
 sub repomd_handle_data_start
 {
   my $p = shift;
   my $el = shift;
 
   my $attr = map_attrs(@_);
-  %datafile = ();
   if($attr->{'type'} ne 'primary') {
     pop @cursor;
   }
 }
-
-sub repomd_handle_data_end
-{
-  my $p = shift;
-  my $el = shift;
-  push @primaryfiles, { %datafile } if exists $datafile{'location'};
-}
-
 
 sub repomd_handle_location
 {
@@ -103,16 +89,10 @@ sub repomd_handle_location
   my $el = shift;
 
   my $attr = map_attrs(@_);
-  $datafile{'location'} = $attr->{'href'} if defined $attr->{'href'};
+  if(exists $attr->{'href'}) {
+    push @primaryfiles, { location => $attr->{'href'} };
+  }
 }
-
-sub repomd_handle_size
-{
-  my $p = shift;
-  my $el = shift;
-  $datafile{'size'} = $el;
-}
-
 
 sub generic_handle_start
 {
@@ -416,7 +396,7 @@ for my $url (@ARGV) {
     } else {
       die "unsupported repo type: $type\n";
     }
-  } elsif ($url =~ /^http[s]?:\/\/([^\/]*)\/?/) {
+  } elsif ($url =~ /^http:\/\/([^\/]*)\/?/) {
     my $repoid = md5_hex($url);
     $dir = "$cachedir/$repoid/";
     $baseurl = $url;
@@ -441,20 +421,14 @@ for my $url (@ARGV) {
     @cursor = ([undef, $primaryparser]);
 
     my $u = $dir . $f->{'location'};
-    if ($] > 5.007) {
-	require Encode;
-	utf8::downgrade($u);
-    }
-    my $cached;
-    if (-e $u) {
-      $cached = 1;
-      $cached = 0 if exists($f->{'size'}) && $f->{'size'} != (-s _);
-      $cached = 0 if !exists($f->{'size'}) && $u !~ /[0-9a-f]{32}-primary/;
-    }
-    if ($url =~ /^http[s]?:\/\/([^\/]*)\/?/ and !$cached) {
+    if ($url =~ /^http:\/\/([^\/]*)\/?/) {
         if (system($INC[0].'/download', $dir . "repodata/", $baseurl . "repodata/" . basename($u))) {
 	  die("download failed\n");
 	}
+    }
+    if ($] > 5.007) {
+	require Encode;
+	utf8::downgrade($u);
     }
     my $fh;
     open($fh, '<', $u) or die "Error opening $u: $!\n";

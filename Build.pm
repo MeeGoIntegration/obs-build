@@ -31,15 +31,11 @@ sub import {
   }
 }
 
-package Build::Features;
-our $preinstallimage = 1;	# on sale now
-package Build;
-
 my $std_macros = q{
 %define nil
 %define ix86 i386 i486 i586 i686 athlon
-%define arm armv4l armv5l armv6l armv7l armv4b armv5l armv5b armv5el armv5eb armv5tel armv5teb armv6hl armv6el armv6eb armv7el armv7eb armv7hl armv7nhl armv8el
-%define arml armv4l armv5l armv6l armv7l armv5tel armv5el armv6el armv6hl armv7el armv7hl armv7nhl armv8el
+%define arm armv4l armv5l armv6l armv7l armv4b armv5l armv5b armv5el armv5eb armv5tel armv5teb armv6el armv6eb armv7el armv7eb armv7hl armv7nhl armv8el
+%define arml armv4l armv5l armv6l armv7l armv5tel armv5el armv6el armv7el armv7hl armv7nhl armv8el
 %define armb armv4b armv5b armv5teb armv5eb armv6eb armv7eb
 %define sparc sparc sparcv8 sparcv9 sparcv9v sparc64 sparc64v
 };
@@ -101,7 +97,7 @@ sub dist_canon($$) {
     $rpmdista = $arch;
   }
   $rpmdista =~ s/i[456]86/i386/;
-  $rpmdist = '' unless $rpmdista =~ /^(i386|x86_64|ia64|ppc|ppc64|ppc64le|s390|s390x)$/;
+  $rpmdist = '' unless $rpmdista =~ /^(i386|x86_64|ia64|ppc|ppc64|s390|s390x)$/;
   my $dist = 'default';
   if ($rpmdist =~ /unitedlinux 1\.0.*/) {
     $dist = "ul1-$rpmdista";
@@ -184,6 +180,7 @@ sub read_config {
   $config->{'vminstall'} = [];
   $config->{'cbpreinstall'} = [];
   $config->{'cbinstall'} = [];
+  $config->{'sb2install'} = [];
   $config->{'runscripts'} = [];
   $config->{'required'} = [];
   $config->{'support'} = [];
@@ -194,6 +191,7 @@ sub read_config {
   $config->{'substitute'} = {};
   $config->{'substitute_vers'} = {};
   $config->{'optflags'} = {};
+  $config->{'sb2flags'} = {};
   $config->{'order'} = {};
   $config->{'exportfilter'} = {};
   $config->{'publishfilter'} = [];
@@ -202,8 +200,6 @@ sub read_config {
   $config->{'repotype'} = [];
   $config->{'patterntype'} = [];
   $config->{'fileprovides'} = {};
-  $config->{'constraint'} = [];
-  $config->{'expandflags'} = [];
   for my $l (@spec) {
     $l = $l->[1] if ref $l;
     next unless defined $l;
@@ -220,7 +216,7 @@ sub read_config {
       }
       next;
     }
-    if ($l0 eq 'preinstall:' || $l0 eq 'vminstall:' || $l0 eq 'required:' || $l0 eq 'support:' || $l0 eq 'keep:' || $l0 eq 'prefer:' || $l0 eq 'ignore:' || $l0 eq 'conflict:' || $l0 eq 'runscripts:' || $l0 eq 'expandflags:') {
+    if ($l0 eq 'preinstall:' || $l0 eq 'vminstall:' || $l0 eq 'cbpreinstall:' || $l0 eq 'cbinstall:' || $l0 eq 'sb2install:' || $l0 eq 'required:' || $l0 eq 'support:' || $l0 eq 'keep:' || $l0 eq 'prefer:' || $l0 eq 'ignore:' || $l0 eq 'conflict:' || $l0 eq 'runscripts:') {
       my $t = substr($l0, 0, -1);
       for my $l (@l) {
 	if ($l eq '!*') {
@@ -256,11 +252,16 @@ sub read_config {
       $ll = shift @l;
       $config->{'exportfilter'}->{$ll} = [ @l ];
     } elsif ($l0 eq 'publishfilter:') {
+      #$config->{'publishfilter'} = [ @l ];
       push @{$config->{'publishfilter'}}, @l;
     } elsif ($l0 eq 'optflags:') {
       next unless @l;
       $ll = shift @l;
       $config->{'optflags'}->{$ll} = join(' ', @l);
+    } elsif ($l0 eq 'sb2flags:') {
+      next unless @l;
+      $ll = shift @l;
+      $config->{'sb2flags'}->{$ll} = join(' ', @l);
     } elsif ($l0 eq 'order:') {
       for my $l (@l) {
 	if ($l eq '!*') {
@@ -273,10 +274,8 @@ sub read_config {
       }
     } elsif ($l0 eq 'repotype:') { #type of generated repository data
       $config->{'repotype'} = [ @l ];
-    } elsif ($l0 eq 'type:') { #kind of packaging system (spec,dsc,arch,kiwi,...)
+    } elsif ($l0 eq 'type:') { #kind of packaging system (spec, dsc or kiwi)
       $config->{'type'} = $l[0];
-    } elsif ($l0 eq 'binarytype:') { #rpm,deb,arch,...
-      $config->{'binarytype'} = $l[0];
     } elsif ($l0 eq 'patterntype:') { #kind of generated patterns in repository
       $config->{'patterntype'} = [ @l ];
     } elsif ($l0 eq 'release:') {
@@ -290,18 +289,11 @@ sub read_config {
       push @macros, "%define _target_cpu ".(split('-', $config->{'target'}))[0] if $config->{'target'};
     } elsif ($l0 eq 'hostarch:') {
       $config->{'hostarch'} = join(' ', @l);
-    } elsif ($l0 eq 'constraint:') {
-      my $l = join(' ', @l);
-      if ($l eq '!*') {
-	$config->{'constraint'} = [];
-      } else {
-	push @{$config->{'constraint'}}, $l;
-      }
     } elsif ($l0 !~ /^[#%]/) {
       warn("unknown keyword in config: $l0\n");
     }
   }
-  for my $l (qw{preinstall vminstall required support keep runscripts repotype patterntype}) {
+  for my $l (qw{preinstall vminstall cbpreinstall cbinstall sb2install required support keep runscripts repotype patterntype}) {
     $config->{$l} = [ unify(@{$config->{$l}}) ];
   }
   for my $l (keys %{$config->{'substitute'}}) {
@@ -322,12 +314,6 @@ sub read_config {
       $config->{'type'} = 'UNDEFINED';
     }
   }
-  if (!$config->{'binarytype'}) {
-    $config->{'binarytype'} = 'rpm' if $config->{'type'} eq 'spec' || $config->{'type'} eq 'kiwi';
-    $config->{'binarytype'} = 'deb' if $config->{'type'} eq 'dsc';
-    $config->{'binarytype'} = 'arch' if $config->{'type'} eq 'arch';
-    $config->{'binarytype'} ||= 'UNDEFINED';
-  }
   # add rawmacros to our macro list
   if ($config->{'rawmacros'} ne '') {
     for my $rm (split("\n", $config->{'rawmacros'})) {
@@ -342,13 +328,6 @@ sub read_config {
       } else {
 	push @macros, "%define ".substr($rm, 1);
       }
-    }
-  }
-  for (@{$config->{'expandflags'} || []}) {
-    if (/^([^:]+):(.*)$/s) {
-      $config->{"expandflags:$1"} = $2;
-    } else {
-      $config->{"expandflags:$_"} = 1;
     }
   }
   return $config;
@@ -398,21 +377,15 @@ sub do_subst_vers {
 sub get_build {
   my ($config, $subpacks, @deps) = @_;
   my @ndeps = grep {/^-/} @deps;
-  my @extra = (@{$config->{'required'}}, @{$config->{'support'}});
-  if (@{$config->{'keep'} || []}) {
-    my %keep = map {$_ => 1} (@deps, @{$config->{'keep'} || []}, @{$config->{'preinstall'}});
-    for (@{$subpacks || []}) {
-      push @ndeps, "-$_" unless $keep{$_};
-    }
-  } else {
-    # new "empty keep" mode, filter subpacks from required/support
-    my %subpacks = map {$_ => 1} @{$subpacks || []};
-    @extra = grep {!$subpacks{$_}} @extra;
+  my %keep = map {$_ => 1} (@deps, @{$config->{'keep'} || []}, @{$config->{'preinstall'}});
+  for (@{$subpacks || []}) {
+    push @ndeps, "-$_" unless $keep{$_};
   }
   my %ndeps = map {$_ => 1} @ndeps;
   @deps = grep {!$ndeps{$_}} @deps;
   push @deps, @{$config->{'preinstall'}};
-  push @deps, @extra;
+  push @deps, @{$config->{'required'}};
+  push @deps, @{$config->{'support'}};
   @deps = grep {!$ndeps{"-$_"}} @deps;
   @deps = do_subst($config, @deps);
   @deps = grep {!$ndeps{"-$_"}} @deps;
@@ -424,20 +397,13 @@ sub get_build {
 sub get_deps {
   my ($config, $subpacks, @deps) = @_;
   my @ndeps = grep {/^-/} @deps;
-  my @extra = @{$config->{'required'}};
-  if (@{$config->{'keep'} || []}) {
-    my %keep = map {$_ => 1} (@deps, @{$config->{'keep'} || []}, @{$config->{'preinstall'}});
-    for (@{$subpacks || []}) {
-      push @ndeps, "-$_" unless $keep{$_};
-    }
-  } else {
-    # new "empty keep" mode, filter subpacks from required
-    my %subpacks = map {$_ => 1} @{$subpacks || []};
-    @extra = grep {!$subpacks{$_}} @extra;
+  my %keep = map {$_ => 1} (@deps, @{$config->{'keep'} || []}, @{$config->{'preinstall'}});
+  for (@{$subpacks || []}) {
+    push @ndeps, "-$_" unless $keep{$_};
   }
   my %ndeps = map {$_ => 1} @ndeps;
   @deps = grep {!$ndeps{$_}} @deps;
-  push @deps, @extra;
+  push @deps, @{$config->{'required'}};
   @deps = grep {!$ndeps{"-$_"}} @deps;
   @deps = do_subst($config, @deps);
   @deps = grep {!$ndeps{"-$_"}} @deps;
@@ -462,14 +428,25 @@ sub get_vminstalls {
   return @{$config->{'vminstall'}};
 }
 
+sub get_cbpreinstalls {
+  my ($config) = @_;
+  return @{$config->{'cbpreinstall'}};
+}
+
+sub get_cbinstalls {
+  my ($config) = @_;
+  return @{$config->{'cbinstall'}};
+}
+
+sub get_sb2installs {
+  my ($config) = @_;
+  return @{$config->{'sb2install'}};
+}
+
 sub get_runscripts {
   my ($config) = @_;
   return @{$config->{'runscripts'}};
 }
-
-### just for API compability
-sub get_cbpreinstalls { return @{[]}; }
-sub get_cbinstalls { return @{[]}; }
 
 ###########################################################################
 
@@ -530,7 +507,7 @@ sub readdeps {
 	if ($pkginfo) {
 	  # extract ver and rel from self provides
 	  my ($v, $r) = map { /\Q$pkgid\E = ([^-]+)(?:-(.+))?$/ } @ss;
-	  die("$pkgid: no self provides\n") unless defined($v) && $v ne '';
+	  die("$pkgid: no self provides\n") unless $v;
 	  $pkginfo->{$pkgid}->{'name'} = $pkgid;
 	  $pkginfo->{$pkgid}->{'version'} = $v;
 	  $pkginfo->{$pkgid}->{'release'} = $r if defined($r);
@@ -611,7 +588,7 @@ sub addproviders {
       if ($pp eq $rn) {
 	# debian: unversioned provides do not match
 	# kiwi: supports only rpm, so we need to hand it like it
-	next if $config->{'binarytype'} eq 'deb';
+	next if $config->{'type'} eq 'dsc';
 	push @p, $rp;
 	last;
       }
@@ -632,7 +609,7 @@ sub addproviders {
       $rr &= 5 unless $pf & 2;
       # verscmp for spec and kiwi types
       my $vv;
-      if ($config->{'binarytype'} eq 'deb') {
+      if ($config->{'type'} eq 'dsc') {
 	$vv = Build::Deb::verscmp($pv, $rv, 1);
       } else {
 	$vv = Build::Rpm::verscmp($pv, $rv, 1);
@@ -887,17 +864,10 @@ sub show {
   die unless $cf;
   my $d = Build::parse($cf, $fn);
   die("$d->{'error'}\n") if $d->{'error'};
-  $d->{'sources'} = [ map {ref($d->{$_}) ? @{$d->{$_}} : $d->{$_}} grep {/^source/} sort keys %$d ];
+  $d->{'sources'} = [ map {$d->{$_}} grep {/^source/} sort keys %$d ];
   my $x = $d->{$field};
   $x = [ $x ] unless ref $x;
   print "$_\n" for @$x;
-}
-
-sub parse_preinstallimage {
-  return undef unless $do_rpm;
-  my $d = Build::Rpm::parse(@_);
-  $d->{'name'} ||= 'preinstallimage';
-  return $d;
 }
 
 sub parse {
@@ -906,8 +876,7 @@ sub parse {
   return Build::Deb::parse($cf, $fn, @args) if $do_deb && $fn =~ /\.dsc$/;
   return Build::Kiwi::parse($cf, $fn, @args) if $do_kiwi && $fn =~ /config\.xml$/;
   return Build::Kiwi::parse($cf, $fn, @args) if $do_kiwi && $fn =~ /\.kiwi$/;
-  return Build::Arch::parse($cf, $fn, @args) if $do_arch && $fn =~ /(^|\/|-)PKGBUILD$/;
-  return parse_preinstallimage($cf, $fn, @args) if $fn =~ /(^|\/|-)_preinstallimage$/;
+  return Build::Arch::parse($cf, $fn, @args) if $do_arch && $fn =~ /PKGBUILD$/;
   return undef;
 }
 

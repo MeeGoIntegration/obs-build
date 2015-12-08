@@ -1,8 +1,7 @@
 #!/usr/bin/perl -w
 
 BEGIN {
-  unshift @INC, '/usr/lib/build';
-  unshift @INC, $::ENV{'BUILD_DIR'} if $::ENV{'BUILD_DIR'};
+  unshift @INC, ($::ENV{'BUILD_DIR'} || '/usr/lib/build');
 }
 
 use Build;
