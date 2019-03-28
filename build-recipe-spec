@@ -249,9 +249,9 @@ recipe_run_rpmlint() {
 }
 
 recipe_compare_oldpackages() {
-    if test -x "$BUILD_TARGET/usr/lib/build/same-build-result.sh" ; then
+    if test -x "$BUILD_TARGET/.build/same-build-result.sh" ; then
 	echo "... comparing built packages with the former built"
-	if enter_target needroot /usr/lib/build/same-build-result.sh /.build.oldpackages "$TOPDIR/RPMS" "$TOPDIR/SRPMS"; then
+	if enter_target needroot /.build/same-build-result.sh /.build.oldpackages "$TOPDIR/RPMS" "$TOPDIR/SRPMS"; then
 	    chroot $BUILD_ROOT touch /.build/.same_result_marker
 	    # XXX: dirty build service hack. fix bs_worker. Search for
 	    # 'same_result_marker' for traces of a first try to get rid of this
