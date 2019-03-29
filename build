@@ -620,8 +620,10 @@ create_baselibs() {
 	cp -f $BUILD_DIR/mkbaselibs $BUILD_TARGET/.mkbaselibs/
 	if test "$BUILDTYPE" == "dsc" ; then
 	    cp -f $BUILD_DIR/baselibs_global-deb.conf $BUILD_TARGET/.mkbaselibs/baselibs_g.conf
-	    cp -f $BUILD_ROOT$TOPDIR/SOURCES/baselibs-deb.conf $BUILD_TARGET/.mkbaselibs/baselibs-deb.conf
-	    BASELIBS_CFG="-c /.mkbaselibs/baselibs-deb.conf"
+	    if test -e $BUILD_ROOT$TOPDIR/SOURCES/baselibs-deb.conf; then
+	   	cp -f $BUILD_ROOT$TOPDIR/SOURCES/baselibs-deb.conf $BUILD_TARGET/.mkbaselibs/baselibs-deb.conf
+		BASELIBS_CFG="-c /.mkbaselibs/baselibs-deb.conf"
+	    fi
 	else
 	    cp -f $BUILD_DIR/baselibs_global.conf $BUILD_TARGET/.mkbaselibs/baselibs_g.conf
 	    if test -z "$BASELIBS_CFG" -a -e $BUILD_DIR/baselibs.conf; then
