@@ -10,6 +10,10 @@ echo 'abuild:*::' >>/etc/gshadow # This is needed on Ubuntu
 echo "abuild::${ABUILD_GID}:" >>/etc/group
 mkdir -p /target /home/abuild
 chmod 775 /target
+# Ensure that .build is visible in the /target too
+mv /.build /target
+ln -s /target/.build /.build
+
 chown -R "$ABUILD_UID:$ABUILD_GID" /target /home/abuild
 if [ -e /home/abuild/sb2-session-needroot ]; then
 	rm -rf /home/abuild/sb2-session-needroot
