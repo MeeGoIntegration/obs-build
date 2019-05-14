@@ -568,7 +568,10 @@ vm_detect_2nd_stage() {
 	    umask 022
 	fi
 	# Do not rely on external system writing the signature, it might differ...
-	mkswap "$VM_SWAP"
+	# This line should be:
+	# mkswap "$VM_SWAP"
+	# But see bug JB#45575. It can be reverted when worker phosts use a >4.8 kernel (suse15)
+	mkswap -U $(cat /proc/sys/kernel/random/uuid) "$VM_SWAP"
 	swapon -v "$VM_SWAP" || exit 1
     fi
     HOST="$VM_HOSTNAME"
