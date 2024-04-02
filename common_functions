@@ -203,6 +203,7 @@ enter_target() {
 		else
 			PARAM=$1
 		fi
+        # Take path as set after su -l before entering
 		case "$PARAM" in
 			needroot)
 				shift
@@ -215,7 +216,7 @@ enter_target() {
 			        fi
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv HOME /root" - abuild
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv USER root" - abuild
-				su -c "cd $PWD; /usr/bin/sb2 $SESSION $SB2_DEBUG -m $SB2_INSTALLMODE -R ${*}" - abuild
+				su -c "cd $PWD; /usr/bin/sb2 $SESSION $SB2_DEBUG -m $SB2_INSTALLMODE -R ${*}" - abuild				    su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv PATH \'\$PATH\'" - abuild
 				RET=$?
 				cd $ORIG
 				return $RET
@@ -232,6 +233,7 @@ enter_target() {
 				fi
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv HOME /home/abuild" - abuild
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv USER abuild" - abuild
+				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv PATH \'\$PATH\'" - abuild
 				su -c "cd $PWD; /usr/bin/sb2 $SESSION $SB2_DEBUG -m $SB2_DEFAULTMODE ${*}" - abuild
 				RET=$?
 				cd $ORIG
