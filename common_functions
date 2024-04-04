@@ -216,11 +216,11 @@ enter_target() {
 				shift
 				ORIG=$PWD
 				cd /target
-		                if [ ! -e /home/abuild/sb2-session-needroot ]; then
+				if [ ! -e /home/abuild/sb2-session-needroot ]; then
 					SESSION="-S /home/abuild/sb2-session-needroot -t oscbuild"
-			        else
+				else
 					SESSION="-J /home/abuild/sb2-session-needroot"
-			        fi
+				fi
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv HOME /root" - abuild
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv USER root" - abuild
 				PARAMS=`shellquote "$@"`
@@ -234,9 +234,9 @@ enter_target() {
 				shift
 				ORIG=$PWD
 				cd /target
-		                if [ ! -e /home/abuild/sb2-session-needuser ]; then
+				if [ ! -e /home/abuild/sb2-session-needuser ]; then
 					SESSION="-S /home/abuild/sb2-session-needuser -t oscbuild"
-			        else
+				else
 					SESSION="-J /home/abuild/sb2-session-needuser"
 				fi
 				PARAMS=`shellquote "$@"`
