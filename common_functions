@@ -224,7 +224,7 @@ enter_target() {
 				fi
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv HOME /root" - abuild
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv USER root" - abuild
-				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv PATH \'\$PATH\'" - abuild
+				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv PATH \$PATH" - abuild
 				PARAMS=`shellquote "$@"`
 				su -c "cd $PWD; /usr/bin/sb2 $SESSION $SB2_DEBUG -m $SB2_INSTALLMODE -R $PARAMS" - abuild
 				RET=$?
@@ -245,7 +245,7 @@ enter_target() {
 
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv HOME /home/abuild" - abuild
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv USER abuild" - abuild
-				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv PATH \'\$PATH\'" - abuild
+				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv PATH \$PATH" - abuild
 				su -c "cd $PWD; /usr/bin/sb2 $SESSION $SB2_DEBUG -m $SB2_DEFAULTMODE $PARAMS" - abuild
 				RET=$?
 				cd $ORIG
