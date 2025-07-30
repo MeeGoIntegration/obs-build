@@ -336,14 +336,35 @@ vm_img_create() {
     # allocate blocks
     if type -p fallocate > /dev/null ; then
         fallocate -p -l "${size}M" "$img" 2> /dev/null
-        errout=$( fallocate -l "${size}M" "$img" 2>&1 )
-        if test $? != 0; then
-            echo $errout
-            if test "${errout/Operation not supported/}" = "$errout"; then
-                # Do not fail on not support file systems, eg ext2 or ext3
-                cleanup_and_exit 3
-            fi
+
+        # Allocating the blocks is done in chunks to allow over committing
+        # memory on tmpfs. On tmpfs the allocation in one go fails if the block
+        # does not fit in memory, even if there would be swap space available.
+        # And we start from the end so most likely unused blocks are pushed to
+        # swap if needed.
+        local offset=$size
+        local chunksize=$size
+        local fs_type=$( findmnt -n -o FSTYPE -T "$img" )
+        if test $fs_type = tmpfs -a $size -gt 512; then
+            chunksize=512
         fi
+        while test $offset -gt 0; do
+            offset=$(( $offset - $chunksize ))
+            if test $offset -lt 0; then
+                chunksize=$(( $chunksize + $offset ))
+                offset=0
+            fi
+            errout=$( fallocate -o "${offset}M" -l "${chunksize}M" "$img" 2>&1 )
+            if test $? != 0; then
+                echo $errout
+                if test "${errout/Operation not supported/}" = "$errout"; then
+                    # Do not fail on not support file systems, eg ext2 or ext3
+                    cleanup_and_exit 3
+                else
+                    break
+                fi
+            fi
+        done
     fi
 }
 
