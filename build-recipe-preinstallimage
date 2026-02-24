@@ -49,6 +49,7 @@ recipe_build_preinstallimage() {
 	.build*) continue ;;
 	.init_b_cache) continue ;;
 	.preinstallimage*) continue ;;
+	target) continue ;; # FIxME verify
 	.srcfiles*) continue ;;
 	.pkgs) continue ;;
 	.rpm-cache) continue ;;

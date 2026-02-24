@@ -523,12 +523,19 @@ cleanup_and_exit () {
     else
 	buildroot_umount /proc/sys/fs/binfmt_misc
 	buildroot_umount /proc
+	buildroot_umount /sys/fs/cgroup
+	buildroot_umount /sys/kernel/security
 	buildroot_umount /sys
 	buildroot_umount /dev/pts
 	buildroot_umount /dev/shm
 	test -n "$VM_ROOT" -a "$VM_ROOT" != 1 && umount $BUILD_ROOT 2>/dev/null || true
 	test -n "$VM_TYPE" && vm_cleanup
     fi
+    # FIXME
+    touch $BUILD_TARGET/.build/_statistics.exit
+    touch $BUILD_ROOT/.build/_statistics.exit
+
+    sleep 2s
     exit $1
 }
 
@@ -1073,6 +1080,8 @@ umount_stuff() {
     if test -n "$BUILD_ROOT" -a "$BUILD_ROOT" != / ; then
 	buildroot_umount /proc/sys/fs/binfmt_misc
 	buildroot_umount /proc
+	buildroot_umount /sys/fs/cgroup
+	buildroot_umount /sys/kernel/security
 	buildroot_umount /sys
 	buildroot_umount /dev/pts
 	buildroot_umount /dev/shm
@@ -1504,6 +1513,7 @@ BUILD_SB2FLAGS=`getsb2flags --dist "$BUILD_DIST" --configdir "$BUILD_DIR/configs
 if [ -n "$BUILD_SB2FLAGS" -a -z "$VM_TYPE" ]; then
     echo "Cannot do SB2 with chroot, switching to vm type sb2"
     VM_TYPE="sb2"
+    VM_TYPE_CONTAINER=true
 fi
 
 if test -n "$KILL" ; then
@@ -1608,7 +1618,7 @@ if test -z "$VM_ROOT" -a -z "$LOGFILE" ; then
     else
         # lxc, docker and nspawn are special cases: vm shares logfile with host
         case "$VM_TYPE" in
-        lxc|docker|nspawn)
+        lxc|docker|nspawn) # FIXME: sb2 should be too
             ;;
         *)
             LOGFILE="$BUILD_ROOT/.build.log"

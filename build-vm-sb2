@@ -9,7 +9,12 @@ vm_verify_options_sb2() {
     VM_SWAP=
 }
 
+# FIXME: Check lxc build-vm scripy
+# check vm_startup_lxc_standalone
+# vm_cleanup_lxc_$LXC_TYPE
+
 vm_startup_sb2() {
+    # FIXME: reuse buildroot functions
     echo "rootfs / rootfs rw 0 0" > $BUILD_ROOT/etc/mtab
     touch $BUILD_ROOT/.sb2chroot
     chroot $BUILD_ROOT "$vm_init_script"
@@ -43,6 +48,7 @@ vm_detach_swap_sb2() {
 }
 
 vm_cleanup_sb2() {
-    :
+    cleanup_sb2
+    # umount fails during cleanup because of sys/fs/ptore sys/kernel/security
 }
 

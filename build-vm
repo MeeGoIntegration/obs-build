@@ -153,7 +153,7 @@ vm_parse_options() {
                 VM_TYPE_CONTAINER=true
                 VM_TYPE=${VM_TYPE%:*}
             ;;
-	    lxc|podman|docker|nspawn)
+	    lxc|podman|docker|nspawn|sb2)
                 VM_TYPE_CONTAINER=true
             ;;
 	    ec2|xen|kvm|uml|qemu|emulator|openstack|zvm|pvm)
@@ -343,6 +343,10 @@ vm_shutdown_halt_helper() {
 vm_shutdown_halt() {
     # get rid of the exit handler
     trap EXIT
+    # used to be:
+    # test "$VM_TYPE" = lxc -o "$VM_TYPE" = docker -o "$VM_TYPE" = sb2 && exit $1
+    # FIXME: Verify
+    # Not sure if building with vm_type_container breaks kvm
     test -n "$VM_TYPE_CONTAINER" && exit $1
     # shutdown from fresh shell to close out deleted inodes
     exec -a "build: halt" -- $BASH -c "$(declare -f vm_shutdown_halt_helper); vm_shutdown_halt_helper $1"
@@ -1147,6 +1151,8 @@ vm_first_stage() {
     buildroot_umount /mnt
 
     vm_init_script="/.build/build"
+    # FIXME: possible refactor
+    # this check might be unessary
     if test -n "$BUILD_SB2FLAGS" -a -e "$BUILD_DIR/initscript_sb2" ; then
             vm_init_script="/.build/initscript_sb2"
     else

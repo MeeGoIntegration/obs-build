@@ -216,7 +216,8 @@ enter_target() {
 			        fi
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv HOME /root" - abuild
 				su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv USER root" - abuild
-				su -c "cd $PWD; /usr/bin/sb2 $SESSION $SB2_DEBUG -m $SB2_INSTALLMODE -R ${*}" - abuild				    su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv PATH \'\$PATH\'" - abuild
+                                su -c "cd $PWD; /usr/bin/sb2-config -t oscbuild setenv PATH \'\$PATH\'" - abuild
+				su -c "cd $PWD; /usr/bin/sb2 $SESSION $SB2_DEBUG -m $SB2_INSTALLMODE -R ${*}" - abuild
 				RET=$?
 				cd $ORIG
 				return $RET

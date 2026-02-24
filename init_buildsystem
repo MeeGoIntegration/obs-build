@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 # Script to create a complete system to build packages in a chroot
 # environment.  This script ensures, that all packages given as
 # parameter are installed. All other packges will be deleted.
@@ -147,7 +147,7 @@ test -z "$CACHE_DIR" && detect_cache_dir
 
 BUILD_IS_RUNNING=$BUILD_ROOT/not-ready
 TMPFILE=$BUILD_ROOT/tmpfile
-BUILD_INIT_CACHE="$BUILD_ROOT/.init_b_cache"
+BUILD_INIT_CACHE="$BUILD_TARGET/.init_b_cache"
 
 #
 # needed functions
@@ -282,33 +282,65 @@ run_cmd_with_xargs() {
 }
 
 preinstall_setup() {
-    cd "$BUILD_ROOT" || cleanup_and_exit 1
+    if test -n "$BUILD_SB2FLAGS" -a "$1" = tools ; then
+	cd "$BUILD_ROOT" || cleanup_and_exit 1
+    else
+	cd "$BUILD_TARGET" || cleanup_and_exit 1
+    fi
     rm -rf build-preinstall
     mkdir build-preinstall || cleanup_and_exit 1
     local mv_args=()
     for i in * .* ; do
 	# please keep in sync with recipe_build_preinstallimage
+	 # FIXME:verify target
 	case "$i" in
-	    .|..|build-preinstall) continue ;;
-	    .build.kernel.*|.build.hostarch.*|.build.initrd.*|.build.console.*|.build.cmdline.*) ;;
+	    \.|\.\.|build-preinstall) continue ;;
+	    target) continue ;;#! test -n "$BUILD_SB2FLAGS" -a "$1" = tools && continue;;
+	    \.build.kernel.*|\.build.hostarch.*|\.build.initrd.*|\.build.console.*|\.build.cmdline.*) : ;;
 	    .build*|.init_b_cache|.preinstallimage*|.srcfiles*|.pkgs|.rpm-cache|installed-pkg|proc|sys) continue ;;
 	esac
-        mv_args[${#mv_args[@]}]="$i"
+	 # 												if test -n "$BUILD_SB2FLAGS" -a "$1" = tools -a $i = target ; then
+	 #   continue
+	 #   for t in target/* ; do
+	 #       case "$t" in
+	 # 	   \.|\.\.|build-preinstall) continue ;;
+	 # 	   # target) ! test -n "$BUILD_SB2FLAGS" -a "$1" = tools && continue;;
+	 # 	   \.build.kernel.*|\.build.hostarch.*|\.build.initrd.*|\.build.console.*|\.build.cmdline.*) : ;;
+	 # 	  build*|.init_b_cache|.preinstallimage*|.srcfiles*|.pkgs|.rpm-cache|installed-pkg|proc|sys) continue ;;
+	 #       esac
+ 	 #       mv_args[${#mv_args[@]}]="$t"
+	 #    done
+	 # else
+	      mv_args[${#mv_args[@]}]="$i"
+	 # fi
     done
     run_cmd_with_xargs mv -t build-preinstall -- "${mv_args[@]}" || cleanup_and_exit 1
     cd build-preinstall || cleanup_and_exit 1
 }
 
 preinstall_integrate() {
-    cd "$BUILD_ROOT/build-preinstall" || cleanup_and_exit 1
+    if test -n "$BUILD_SB2FLAGS" -a "$1" = tools ; then
+	cd "$BUILD_ROOT/build-preinstall" || cleanup_and_exit 1
+    else
+	cd "$BUILD_TARGET/build-preinstall" || cleanup_and_exit 1
+    fi
     local mv_args=()
     for i in * .* ; do
 	case "$i" in
 	    .|..|build-preinstall) continue ;;
-	    .build.kernel.*|.build.hostarch.*|.build.initrd.*|.build.console.*|.build.cmdline.*) ;;
+            \.\*) continue ;;
+            target) continue;;# ! test -n "$BUILD_SB2FLAGS" -a "$1" = tools && continue;;
+            .build.kernel.*|.build.hostarch.*|.build.initrd.*|.build.console.*|.build.cmdline.*) : ;;
 	    .build*|.init_b_cache|.preinstallimage*|.srcfiles*|.pkgs|.rpm-cache|installed-pkg|proc|sys) continue ;;
-	esac
-        mv_args[${#mv_args[@]}]="$i"
+        esac
+      	# 												if test -n "$BUILD_SB2FLAGS" -a "$1" = tools -a $i = target ; then
+	# 												  #  continue
+	#     for t in target/* ; do
+	# 	mv_args[${#mv_args[@]}]="$t"
+	#     done
+	# else
+	      mv_args[${#mv_args[@]}]="$i"
+	#fi
     done
     run_cmd_with_xargs mv -t .. -- "${mv_args[@]}" || cleanup_and_exit 1
     cd "$BUILD_ROOT" || cleanup_and_exit 1
@@ -348,17 +380,17 @@ preinstall_image() {
 preinstall() {
     local PKG="$1"
     check_exit
-    echo "preinstalling $PKG..."
-    preinstall_setup
+    echo "preinstalling $PKG... $2"
+    preinstall_setup $2
     if test "$UID" = 0 -a -x /usr/bin/bsdtar ; then
-	CPIO="/usr/bin/bsdtar --exclude .build --exclude .init_b_cache -P --chroot -o --numeric-owner -x -f-"
+	    CPIO="/usr/bin/bsdtar --exclude .build --exclude .init_b_cache -P --chroot -o --numeric-owner -x -f-"
 	TAR="/usr/bin/bsdtar --exclude .build --exclude .init_b_cache -P --chroot -o --numeric-owner -x -f-"
     else
 	CPIO="$BUILD_DIR/unpackarchive --cpio --try-chroot"
 	TAR="$BUILD_DIR/unpackarchive --tar --try-chroot"
     fi
     pkg_preinstall
-    preinstall_integrate
+    preinstall_integrate $2
 }
 
 run_pkg_scripts() {
@@ -1069,7 +1101,7 @@ fi
 #
 # finish preinstall if this is a vm continuation
 #
-if test -e "$BUILD_ROOT/.build/init_buildsystem.data" -a ! -e "$BUILD_INIT_CACHE/preinstall_finished" ; then
+if test -e "$BUILD_TARGET/.build/init_buildsystem.data" -a ! -e "$BUILD_INIT_CACHE/preinstall_finished" ; then
     run_pkg_scripts
     pkg_initdb
     : > "$BUILD_INIT_CACHE/preinstall_finished"
@@ -1174,6 +1206,9 @@ fi
 
 MAIN_LIST="$PACKAGES_TO_INSTALL"
 progress_setup MAIN_LIST
+
+cd $BUILD_TARGET
+
 for PKG in $MAIN_LIST ; do
     test -f $BUILD_ROOT/installed-pkg/$PKG && continue
     progress_step MAIN_LIST
