@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 # Script to create a complete system to build packages in a chroot
 # environment.  This script ensures, that all packages given as
 # parameter are installed. All other packges will be deleted.
@@ -1156,7 +1156,7 @@ done | "$BUILD_DIR/getbuildids"
 # get list and ids of already installed packages
 #
 mkdir -p $BUILD_INIT_CACHE/alreadyinstalled
-listinstalled --root "$BUILD_ROOT" --type "$PSUF" --extraname | (
+listinstalled --root "$BUILD_TARGET" --type "$PSUF" --extraname | (
     while read id name buildid; do
 	echo "$buildid" > "$BUILD_INIT_CACHE/alreadyinstalled/$name"
     done
