@@ -1156,6 +1156,14 @@ done | "$BUILD_DIR/getbuildids"
 # get list and ids of already installed packages
 #
 mkdir -p $BUILD_INIT_CACHE/alreadyinstalled
+listinstalled() {
+ if [ -z "$BUILD_SB2FLAGS"  ] ; then
+   command listinstalled --root "$BUILD_TARGET" --type "$PSUF" --extraname
+ else
+   enter_target sh -c \"PERL5LIB=$BUILD_DIR  $BUILD_DIR/listinstalled "$@" \"
+ fi
+}
+
 listinstalled --root "$BUILD_TARGET" --type "$PSUF" --extraname | (
     while read id name buildid; do
 	echo "$buildid" > "$BUILD_INIT_CACHE/alreadyinstalled/$name"
